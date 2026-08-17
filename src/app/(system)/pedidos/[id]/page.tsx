@@ -20,6 +20,10 @@ import { createClient } from "@/lib/supabase/server";
 
 import WorkflowForm from "./workflow-form";
 
+// ============================================================
+// HELPERS
+// ============================================================
+
 function formatCurrency(
   value: number | string | null
 ) {
@@ -59,6 +63,42 @@ function formatDateTime(
   ).format(new Date(value));
 }
 
+/**
+ * O Supabase pode inferir relações como array,
+ * mesmo quando esperamos apenas um registro.
+ *
+ * Esta função normaliza:
+ *
+ * { name: "Engenharia" }
+ *
+ * ou:
+ *
+ * [{ name: "Engenharia" }]
+ *
+ * para sempre retornar apenas um objeto.
+ */
+function firstRelation<T>(
+  value:
+    | T
+    | T[]
+    | null
+    | undefined
+): T | null {
+  if (!value) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value;
+}
+
+// ============================================================
+// PAGE
+// ============================================================
+
 export default async function PurchaseRequestDetailsPage({
   params,
 }: {
@@ -66,17 +106,33 @@ export default async function PurchaseRequestDetailsPage({
     id: string;
   }>;
 }) {
-  const { id } = await params;
+  const { id } =
+    await params;
 
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
-  const { data: claimsData } =
+  // =========================================================
+  // AUTENTICAÇÃO
+  // =========================================================
+
+  const {
+    data: claimsData,
+  } =
     await supabase.auth.getClaims();
 
   const userId =
-    claimsData?.claims?.sub ?? null;
+    claimsData?.claims?.sub ??
+    null;
 
-  const { data: request, error } =
+  // =========================================================
+  // PEDIDO
+  // =========================================================
+
+  const {
+    data: request,
+    error,
+  } =
     await supabase
       .from("purchase_requests")
       .select(
@@ -122,13 +178,55 @@ export default async function PurchaseRequestDetailsPage({
         supplier:suppliers(name)
         `
       )
-      .eq("id", id)
-      .is("deleted_at", null)
+      .eq(
+        "id",
+        id
+      )
+      .is(
+        "deleted_at",
+        null
+      )
       .single();
 
-  if (error || !request) {
+  if (
+    error ||
+    !request
+  ) {
     notFound();
   }
+
+  // =========================================================
+  // NORMALIZA RELAÇÕES DO SUPABASE
+  // =========================================================
+
+  const company =
+    firstRelation(
+      request.company
+    );
+
+  const department =
+    firstRelation(
+      request.department
+    );
+
+  const project =
+    firstRelation(
+      request.project
+    );
+
+  const costCenter =
+    firstRelation(
+      request.cost_center
+    );
+
+  const supplier =
+    firstRelation(
+      request.supplier
+    );
+
+  // =========================================================
+  // ITENS / HISTÓRICO / ROLES
+  // =========================================================
 
   const [
     itemsResult,
@@ -136,7 +234,9 @@ export default async function PurchaseRequestDetailsPage({
     rolesResult,
   ] = await Promise.all([
     supabase
-      .from("purchase_request_items")
+      .from(
+        "purchase_request_items"
+      )
       .select(
         `
         id,
@@ -150,10 +250,16 @@ export default async function PurchaseRequestDetailsPage({
         notes
         `
       )
-      .eq("purchase_request_id", id)
-      .order("created_at", {
-        ascending: true,
-      }),
+      .eq(
+        "purchase_request_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: true,
+        }
+      ),
 
     supabase
       .from(
@@ -168,30 +274,62 @@ export default async function PurchaseRequestDetailsPage({
         created_at
         `
       )
-      .eq("purchase_request_id", id)
-      .order("created_at", {
-        ascending: true,
-      }),
+      .eq(
+        "purchase_request_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: true,
+        }
+      ),
 
     userId
       ? supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", userId)
+          .from(
+            "user_roles"
+          )
+          .select(
+            "role"
+          )
+          .eq(
+            "user_id",
+            userId
+          )
       : Promise.resolve({
           data: [],
           error: null,
         }),
   ]);
 
-  const roles = (
-    rolesResult.data ?? []
-  ).map((item) => item.role);
+  // =========================================================
+  // PERMISSÕES
+  // =========================================================
+
+  const roles =
+    (
+      rolesResult.data ??
+      []
+    ).map(
+      (item) =>
+        item.role
+    );
 
   const canManage =
-    roles.includes("buyer") ||
-    roles.includes("admin") ||
-    roles.includes("superadmin");
+    roles.includes(
+      "buyer"
+    ) ||
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
+
+  // =========================================================
+  // FORNECEDORES
+  // =========================================================
 
   let suppliers: {
     id: string;
@@ -202,37 +340,70 @@ export default async function PurchaseRequestDetailsPage({
     const suppliersResult =
       await supabase
         .from("suppliers")
-        .select("id, name")
-        .eq("active", true)
+        .select(
+          "id, name"
+        )
+        .eq(
+          "active",
+          true
+        )
         .order("name");
 
     suppliers =
-      suppliersResult.data ?? [];
+      suppliersResult.data ??
+      [];
   }
 
-  const items = itemsResult.data ?? [];
+  // =========================================================
+  // DADOS
+  // =========================================================
+
+  const items =
+    itemsResult.data ??
+    [];
+
   const history =
-    historyResult.data ?? [];
+    historyResult.data ??
+    [];
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
     <div className="mx-auto max-w-[1500px]">
+      {/* =====================================================
+          VOLTAR
+      ====================================================== */}
+
       <Link
         href="/pedidos"
         className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#AF1B1B]"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft
+          size={16}
+        />
+
         Voltar para pedidos
       </Link>
+
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
 
       <div className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-bold text-[#AF1B1B]">
-              {request.request_number}
+              {
+                request.request_number
+              }
             </span>
 
             <PurchaseStatus
-              status={request.status}
+              status={
+                request.status
+              }
             />
           </div>
 
@@ -241,7 +412,9 @@ export default async function PurchaseRequestDetailsPage({
           </h1>
 
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            {request.justification}
+            {
+              request.justification
+            }
           </p>
         </div>
 
@@ -258,11 +431,25 @@ export default async function PurchaseRequestDetailsPage({
         </div>
       </div>
 
+      {/* =====================================================
+          GRID PRINCIPAL
+      ====================================================== */}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+        {/* ===================================================
+            COLUNA ESQUERDA
+        ==================================================== */}
+
         <div className="space-y-6">
+          {/* =================================================
+              RESUMO
+          ================================================= */}
+
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <InfoCard
-              icon={CalendarDays}
+              icon={
+                CalendarDays
+              }
               label="Data necessária"
               value={formatDate(
                 request.required_date
@@ -279,7 +466,9 @@ export default async function PurchaseRequestDetailsPage({
             />
 
             <InfoCard
-              icon={PackageCheck}
+              icon={
+                PackageCheck
+              }
               label="Pedido Sienge"
               value={
                 request.sienge_order_number ??
@@ -296,6 +485,10 @@ export default async function PurchaseRequestDetailsPage({
             />
           </section>
 
+          {/* =================================================
+              ITENS
+          ================================================= */}
+
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <div className="flex items-center gap-3">
@@ -310,12 +503,15 @@ export default async function PurchaseRequestDetailsPage({
                   </h2>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    {items.length} item
-                    {items.length === 1
+                    {items.length}{" "}
+                    item
+                    {items.length ===
+                    1
                       ? ""
                       : "s"}{" "}
                     registrado
-                    {items.length === 1
+                    {items.length ===
+                    1
                       ? ""
                       : "s"}
                   </p>
@@ -351,12 +547,22 @@ export default async function PurchaseRequestDetailsPage({
 
                 <tbody className="divide-y divide-slate-100">
                   {items.map(
-                    (item, index) => (
-                      <tr key={item.id}>
+                    (
+                      item,
+                      index
+                    ) => (
+                      <tr
+                        key={
+                          item.id
+                        }
+                      >
                         <td className="px-6 py-4">
                           <div className="flex gap-3">
                             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-semibold text-slate-500">
-                              {index + 1}
+                              {
+                                index +
+                                1
+                              }
                             </span>
 
                             <div>
@@ -368,7 +574,9 @@ export default async function PurchaseRequestDetailsPage({
 
                               {item.notes && (
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {item.notes}
+                                  {
+                                    item.notes
+                                  }
                                 </p>
                               )}
                             </div>
@@ -381,13 +589,15 @@ export default async function PurchaseRequestDetailsPage({
                           ).toLocaleString(
                             "pt-BR",
                             {
-                              maximumFractionDigits: 3,
+                              maximumFractionDigits:
+                                3,
                             }
                           )}
                         </td>
 
                         <td className="px-4 py-4 text-sm text-slate-600">
-                          {item.unit ?? "-"}
+                          {item.unit ??
+                            "-"}
                         </td>
 
                         <td className="px-4 py-4 text-sm text-slate-600">
@@ -426,6 +636,10 @@ export default async function PurchaseRequestDetailsPage({
             </div>
           </section>
 
+          {/* =================================================
+              HISTÓRICO
+          ================================================= */}
+
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="font-semibold text-slate-950">
@@ -433,13 +647,15 @@ export default async function PurchaseRequestDetailsPage({
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Histórico de movimentações do
+                Histórico de
+                movimentações do
                 pedido.
               </p>
             </div>
 
             <div className="p-6">
-              {history.length === 0 ? (
+              {history.length ===
+              0 ? (
                 <p className="text-sm text-slate-400">
                   Nenhuma movimentação
                   registrada.
@@ -447,14 +663,20 @@ export default async function PurchaseRequestDetailsPage({
               ) : (
                 <div className="space-y-0">
                   {history.map(
-                    (entry, index) => {
+                    (
+                      entry,
+                      index
+                    ) => {
                       const last =
                         index ===
-                        history.length - 1;
+                        history.length -
+                          1;
 
                       return (
                         <div
-                          key={entry.id}
+                          key={
+                            entry.id
+                          }
                           className="relative flex gap-4 pb-7 last:pb-0"
                         >
                           {!last && (
@@ -478,7 +700,9 @@ export default async function PurchaseRequestDetailsPage({
 
                             {entry.notes && (
                               <p className="mt-2 text-xs leading-5 text-slate-500">
-                                {entry.notes}
+                                {
+                                  entry.notes
+                                }
                               </p>
                             )}
                           </div>
@@ -492,7 +716,15 @@ export default async function PurchaseRequestDetailsPage({
           </section>
         </div>
 
+        {/* ===================================================
+            COLUNA DIREITA
+        ==================================================== */}
+
         <aside className="space-y-6">
+          {/* =================================================
+              WORKFLOW
+          ================================================= */}
+
           {canManage && (
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
@@ -505,33 +737,48 @@ export default async function PurchaseRequestDetailsPage({
                 </h2>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Atualize as informações do
-                  pedido conforme o andamento no
-                  Sienge.
+                  Atualize as informações
+                  do pedido conforme o
+                  andamento no Sienge.
                 </p>
               </div>
 
               <WorkflowForm
                 request={{
-                  id: request.id,
-                  status: request.status,
+                  id:
+                    request.id,
+
+                  status:
+                    request.status,
+
                   sienge_request_number:
                     request.sienge_request_number,
+
                   sienge_order_number:
                     request.sienge_order_number,
+
                   supplier_id:
                     request.supplier_id,
+
                   order_date:
                     request.order_date,
+
                   expected_delivery_date:
                     request.expected_delivery_date,
+
                   internal_notes:
                     request.internal_notes,
                 }}
-                suppliers={suppliers}
+                suppliers={
+                  suppliers
+                }
               />
             </section>
           )}
+
+          {/* =================================================
+              DADOS DO PROCESSO
+          ================================================= */}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-3">
@@ -554,9 +801,17 @@ export default async function PurchaseRequestDetailsPage({
               />
 
               <DataRow
+                label="Empresa"
+                value={
+                  company?.name ??
+                  "Não informado"
+                }
+              />
+
+              <DataRow
                 label="Departamento"
                 value={
-                  request.department?.name ??
+                  department?.name ??
                   "Não informado"
                 }
               />
@@ -564,7 +819,7 @@ export default async function PurchaseRequestDetailsPage({
               <DataRow
                 label="Projeto"
                 value={
-                  request.project?.name ??
+                  project?.name ??
                   "Não informado"
                 }
               />
@@ -572,11 +827,10 @@ export default async function PurchaseRequestDetailsPage({
               <DataRow
                 label="Centro de custo"
                 value={
-                  request.cost_center
-                    ? request.cost_center.code
-                      ? `${request.cost_center.code} - ${request.cost_center.name}`
-                      : request.cost_center
-                          .name
+                  costCenter
+                    ? costCenter.code
+                      ? `${costCenter.code} - ${costCenter.name}`
+                      : costCenter.name
                     : "Não informado"
                 }
               />
@@ -584,7 +838,7 @@ export default async function PurchaseRequestDetailsPage({
               <DataRow
                 label="Fornecedor"
                 value={
-                  request.supplier?.name ??
+                  supplier?.name ??
                   "Não definido"
                 }
               />
@@ -602,6 +856,10 @@ export default async function PurchaseRequestDetailsPage({
     </div>
   );
 }
+
+// ============================================================
+// INFO CARD
+// ============================================================
 
 function InfoCard({
   icon: Icon,
@@ -629,6 +887,10 @@ function InfoCard({
     </div>
   );
 }
+
+// ============================================================
+// DATA ROW
+// ============================================================
 
 function DataRow({
   label,
