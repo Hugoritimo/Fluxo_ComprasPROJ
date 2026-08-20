@@ -1,29 +1,25 @@
-import type {
-  ElementType,
-} from "react";
-
 import Link from "next/link";
-
-import {
-  ArrowLeft,
-  Building2,
-  CalendarDays,
-  CircleDollarSign,
-  ExternalLink,
-  FileText,
-  Hash,
-  Mail,
-  Receipt,
-  Store,
-  User,
-} from "lucide-react";
 
 import {
   notFound,
   redirect,
 } from "next/navigation";
 
-import CardRequestStatus from "@/components/cards/card-request-status";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  CircleDollarSign,
+  CreditCard,
+  Download,
+  ExternalLink,
+  FileText,
+  Hash,
+  Receipt,
+  Store,
+  User,
+  UserRoundCheck,
+} from "lucide-react";
 
 import {
   createClient,
@@ -37,7 +33,7 @@ type PageProps = {
   }>;
 };
 
-function formatCurrency(
+function currency(
   value:
     | number
     | string
@@ -54,7 +50,7 @@ function formatCurrency(
   );
 }
 
-function formatDate(
+function date(
   value: string | null
 ) {
   if (!value) {
@@ -70,7 +66,7 @@ function formatDate(
   );
 }
 
-function formatDateTime(
+function dateTime(
   value: string | null
 ) {
   if (!value) {
@@ -80,279 +76,183 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
-      dateStyle: "short",
-      timeStyle: "short",
+      dateStyle:
+        "short",
+      timeStyle:
+        "short",
     }
   ).format(
     new Date(value)
   );
 }
 
-function formatFileSize(
-  bytes:
-    | number
-    | string
-    | null
-) {
-  const size =
-    Number(bytes ?? 0);
-
-  if (!size) {
-    return "-";
-  }
-
-  if (
-    size < 1024 * 1024
-  ) {
-    return `${(
-      size / 1024
-    ).toFixed(1)} KB`;
-  }
-
-  return `${(
-    size /
-    1024 /
-    1024
-  ).toFixed(1)} MB`;
-}
-
 export default async function FinanceReturnDetailsPage({
   params,
 }: PageProps) {
-  const { id } =
-    await params;
+  const {
+    id,
+  } = await params;
 
   const supabase =
     await createClient();
 
-  // =========================================================
-  // AUTENTICAÇÃO
-  // =========================================================
-
   const {
-    data: claimsData,
+    data: claims,
   } =
     await supabase.auth.getClaims();
 
   const userId =
-    claimsData?.claims?.sub;
+    claims?.claims?.sub;
 
   if (!userId) {
-    redirect("/login");
+    redirect(
+      "/login"
+    );
   }
-
-  // =========================================================
-  // PERMISSÃO
-  // =========================================================
 
   const {
     data: roleRows,
-  } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId);
+  } =
+    await supabase
+      .from(
+        "user_roles"
+      )
+      .select(
+        "role"
+      )
+      .eq(
+        "user_id",
+        userId
+      );
 
-  const roles =
-    (roleRows ?? []).map(
-      (item) => item.role
-    );
-
-  const canAccess =
-    roles.includes("finance") ||
-    roles.includes("admin") ||
-    roles.includes("superadmin");
-
-  if (!canAccess) {
-    redirect("/dashboard");
-  }
-
-  // =========================================================
-  // SOLICITAÇÃO
-  // =========================================================
-
-  const {
-    data: request,
-    error,
-  } = await supabase
-    .from("card_requests")
-    .select(
-      `
-      id,
-      request_number,
-      requester_id,
-
-      request_date,
-      sienge_request_number,
-      cost_center_or_site,
-      suppliers_text,
-
-      estimated_amount,
-      approved_amount,
-
-      purpose,
-      status,
-
-      assigned_card_id,
-
-      returned_at,
-      completed_at,
-      updated_at
-      `
-    )
-    .eq("id", id)
-    .is(
-      "deleted_at",
-      null
-    )
-    .single();
+  const roles = (
+    roleRows ?? []
+  ).map(
+    (row) =>
+      row.role
+  );
 
   if (
-    error ||
-    !request
+    !roles.includes(
+      "finance"
+    ) &&
+    !roles.includes(
+      "admin"
+    ) &&
+    !roles.includes(
+      "superadmin"
+    )
   ) {
-    notFound();
+    redirect(
+      "/dashboard"
+    );
   }
-
-  // =========================================================
-  // COMPLEMENTARES
-  // =========================================================
 
   const [
-    profileResult,
-    accountabilityResult,
+    summaryResult,
+    purchasesResult,
     attachmentsResult,
-  ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select(
-        `
-        id,
-        full_name,
-        email
-        `
-      )
-      .eq(
-        "id",
-        request.requester_id
-      )
-      .single(),
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "v_card_accountability_summary"
+        )
+        .select("*")
+        .eq(
+          "card_request_id",
+          id
+        )
+        .single(),
 
-    supabase
-      .from(
-        "card_accountability"
-      )
-      .select(
-        `
-        card_request_id,
-        actual_amount,
-        purchase_date,
-        supplier_name,
-        return_notes,
+      supabase
+        .from(
+          "card_accountability_purchases"
+        )
+        .select(
+          `
+          id,
+          supplier_name,
+          amount,
+          purchase_date,
+          notes
+          `
+        )
+        .eq(
+          "card_request_id",
+          id
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        ),
 
-        reviewed_by,
-        reviewed_at,
-        review_notes,
-        approved,
+      supabase
+        .from(
+          "attachments"
+        )
+        .select(
+          `
+          id,
+          category,
+          file_name,
+          storage_path,
+          mime_type,
+          file_size,
+          created_at
+          `
+        )
+        .eq(
+          "card_request_id",
+          id
+        )
+        .in(
+          "category",
+          [
+            "invoice",
+            "payment_receipt",
+            "other",
+            "accountability",
+          ]
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        ),
+    ]);
 
-        created_at,
-        updated_at
-        `
-      )
-      .eq(
-        "card_request_id",
-        request.id
-      )
-      .maybeSingle(),
+  if (
+    summaryResult.error ||
+    !summaryResult.data
+  ) {
+    console.error(
+      "Erro ao carregar prestação:",
+      summaryResult.error
+    );
 
-    supabase
-      .from("attachments")
-      .select(
-        `
-        id,
-        category,
-        file_name,
-        storage_path,
-        mime_type,
-        file_size,
-        created_at
-        `
-      )
-      .eq(
-        "card_request_id",
-        request.id
-      )
-      .is(
-        "deleted_at",
-        null
-      )
-      .in(
-        "category",
-        [
-          "invoice",
-          "payment_receipt",
-        ]
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
-  ]);
-
-  const requester =
-    profileResult.data;
-
-  const accountability =
-    accountabilityResult.data;
-
-  if (!accountability) {
     notFound();
   }
 
-  // =========================================================
-  // CARTÃO
-  // =========================================================
+  const summary =
+    summaryResult.data;
 
-  let card: {
-    id: string;
-    name: string;
-    bank_name: string | null;
-    last_four_digits: string;
-  } | null = null;
-
-  if (
-    request.assigned_card_id
-  ) {
-    const {
-      data: cardRow,
-    } = await supabase
-      .from("credit_cards")
-      .select(
-        `
-        id,
-        name,
-        bank_name,
-        last_four_digits
-        `
-      )
-      .eq(
-        "id",
-        request.assigned_card_id
-      )
-      .maybeSingle();
-
-    card =
-      cardRow ?? null;
-  }
-
-  // =========================================================
-  // URLs TEMPORÁRIAS DOS DOCUMENTOS
-  // =========================================================
+  const purchases =
+    purchasesResult.data ??
+    [];
 
   const attachments =
     attachmentsResult.data ??
     [];
+
+  // ==========================================================
+  // URLS PRIVADAS
+  // ==========================================================
 
   const documents =
     await Promise.all(
@@ -361,10 +261,7 @@ export default async function FinanceReturnDetailsPage({
           attachment
         ) => {
           const {
-            data:
-              signedData,
-            error:
-              signedError,
+            data,
           } =
             await supabase.storage
               .from(
@@ -372,73 +269,28 @@ export default async function FinanceReturnDetailsPage({
               )
               .createSignedUrl(
                 attachment.storage_path,
-                60 * 10
+                3600
               );
-
-          if (
-            signedError
-          ) {
-            console.error(
-              "Erro ao gerar link:",
-              signedError
-            );
-          }
 
           return {
             ...attachment,
 
             signedUrl:
-              signedData?.signedUrl ??
+              data?.signedUrl ??
               null,
           };
         }
       )
     );
 
-  const invoice =
-    documents.find(
-      (document) =>
-        document.category ===
-        "invoice"
-    );
-
-  const receipt =
-    documents.find(
-      (document) =>
-        document.category ===
-        "payment_receipt"
-    );
-
-  // =========================================================
-  // COMPARAÇÃO DE VALORES
-  // =========================================================
-
-  const requestedAmount =
-    Number(
-      request.estimated_amount ??
-      0
-    );
-
-  const approvedAmount =
-    Number(
-      request.approved_amount ??
-      0
-    );
-
-  const actualAmount =
-    Number(
-      accountability.actual_amount ??
-      0
-    );
-
-  const difference =
-    approvedAmount -
-    actualAmount;
+  const canReview =
+    summary.status ===
+      "returned" ||
+    summary.status ===
+      "accountability_review";
 
   return (
     <div className="mx-auto max-w-[1500px]">
-      {/* VOLTAR */}
-
       <Link
         href="/financeiro/devolucoes"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#AF1B1B]"
@@ -447,475 +299,474 @@ export default async function FinanceReturnDetailsPage({
           size={16}
         />
 
-        Voltar para devoluções
+        Voltar para
+        devoluções
       </Link>
 
-      {/* =====================================================
-          CABEÇALHO
-      ====================================================== */}
-
       <div className="mb-7">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-bold text-[#AF1B1B]">
-            {
-              request.request_number
-            }
-          </span>
+        <p className="text-sm font-bold text-[#AF1B1B]">
+          {
+            summary.request_number
+          }
+        </p>
 
-          <CardRequestStatus
-            status={
-              request.status
-            }
-          />
-        </div>
-
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-          Conferência da Prestação
+        <h1 className="mt-2 text-2xl font-semibold text-slate-950 sm:text-3xl">
+          Prestação de contas
         </h1>
 
         <p className="mt-2 text-sm text-slate-500">
-          Confira valores e
-          documentos antes de
-          concluir a solicitação.
+          Confira os valores,
+          fornecedores e documentos
+          apresentados pelo
+          colaborador.
         </p>
       </div>
-
-      {/* =====================================================
-          VALORES
-      ====================================================== */}
-
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ValueCard
-          label="Valor solicitado"
-          value={formatCurrency(
-            requestedAmount
-          )}
-        />
-
-        <ValueCard
-          label="Valor aprovado"
-          value={formatCurrency(
-            approvedAmount
-          )}
-        />
-
-        <ValueCard
-          label="Valor utilizado"
-          value={formatCurrency(
-            actualAmount
-          )}
-          highlight
-        />
-
-        <ValueCard
-          label={
-            difference >= 0
-              ? "Saldo não utilizado"
-              : "Valor excedente"
-          }
-          value={formatCurrency(
-            Math.abs(
-              difference
-            )
-          )}
-          danger={
-            difference < 0
-          }
-        />
-      </div>
-
-      {/* =====================================================
-          GRID
-      ====================================================== */}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_410px]">
         <div className="space-y-6">
           {/* DADOS */}
 
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Info
+              icon={User}
+              label="Solicitante"
+              value={
+                summary.requester_name ??
+                "-"
+              }
+            />
+
+            <Info
+              icon={Hash}
+              label="Sienge"
+              value={
+                summary.sienge_request_number ??
+                "-"
+              }
+            />
+
+            <Info
+              icon={
+                CreditCard
+              }
+              label="Cartão"
+              value={
+                `${summary.card_name ?? "Cartão"} •••• ${summary.card_last_four_digits ?? "----"}`
+              }
+            />
+
+            <Info
+              icon={
+                UserRoundCheck
+              }
+              label="Recebido por"
+              value={
+                summary.received_by_name ??
+                "-"
+              }
+            />
+          </section>
+
+          {/* VALORES */}
+
+          <section className="grid gap-4 md:grid-cols-3">
+            <Value
+              label="Total autorizado"
+              value={
+                summary.authorized_total
+              }
+            />
+
+            <Value
+              label="Total utilizado"
+              value={
+                summary.used_total
+              }
+            />
+
+            <Value
+              label={
+                Number(
+                  summary.balance
+                ) >= 0
+                  ? "Saldo não utilizado"
+                  : "Valor excedente"
+              }
+              value={Math.abs(
+                Number(
+                  summary.balance ??
+                    0
+                )
+              )}
+              alert={
+                Number(
+                  summary.balance
+                ) < 0
+              }
+            />
+          </section>
+
+          {/* COMPRAS */}
+
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="font-semibold text-slate-950">
-                Dados da prestação
+                Compras realizadas
               </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Valores informados
+                pelo colaborador.
+              </p>
             </div>
 
-            <div className="grid gap-6 p-6 md:grid-cols-2">
-              <DataField
-                icon={User}
-                label="Solicitante"
-                value={
-                  requester?.full_name ??
-                  "-"
-                }
-              />
+            <div className="divide-y divide-slate-100">
+              {purchases.map(
+                (
+                  purchase,
+                  index
+                ) => (
+                  <div
+                    key={
+                      purchase.id
+                    }
+                    className="grid gap-4 p-6 md:grid-cols-[1fr_160px_140px]"
+                  >
+                    <div className="flex gap-3">
+                      <Store
+                        size={18}
+                        className="mt-0.5 shrink-0 text-[#AF1B1B]"
+                      />
 
-              <DataField
-                icon={Mail}
-                label="E-mail"
-                value={
-                  requester?.email ??
-                  "-"
-                }
-              />
+                      <div>
+                        <p className="text-xs text-slate-400">
+                          Compra{" "}
+                          {index + 1}
+                        </p>
 
-              <DataField
-                icon={Hash}
-                label="Pedido Sienge"
-                value={
-                  request.sienge_request_number ??
-                  "-"
-                }
-              />
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {
+                            purchase.supplier_name
+                          }
+                        </p>
 
-              <DataField
-                icon={Building2}
-                label="Centro de custo / Obra"
-                value={
-                  request.cost_center_or_site ??
-                  "-"
-                }
-              />
+                        {purchase.notes && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {
+                              purchase.notes
+                            }
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-              <DataField
-                icon={Store}
-                label="Fornecedor"
-                value={
-                  accountability.supplier_name ??
-                  "-"
-                }
-              />
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase text-slate-400">
+                        Valor
+                      </p>
 
-              <DataField
-                icon={CalendarDays}
-                label="Data da compra"
-                value={formatDate(
-                  accountability.purchase_date
-                )}
-              />
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {currency(
+                          purchase.amount
+                        )}
+                      </p>
+                    </div>
 
-              <DataField
-                icon={
-                  CircleDollarSign
-                }
-                label="Valor utilizado"
-                value={formatCurrency(
-                  accountability.actual_amount
-                )}
-              />
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase text-slate-400">
+                        Data
+                      </p>
 
-              <DataField
-                icon={Receipt}
-                label="Devolvido em"
-                value={formatDateTime(
-                  request.returned_at
-                )}
-              />
-
-              {card && (
-                <div className="md:col-span-2">
-                  <DataField
-                    icon={Receipt}
-                    label="Cartão utilizado"
-                    value={`${card.name} · ${card.bank_name ?? "Banco não informado"} · •••• ${card.last_four_digits}`}
-                  />
-                </div>
+                      <p className="mt-1 text-xs font-medium text-slate-700">
+                        {date(
+                          purchase.purchase_date
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )
               )}
             </div>
           </section>
 
-          {/* FINALIDADE */}
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Finalidade original
-            </p>
-
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-              {
-                request.purpose
-              }
-            </p>
-
-            {accountability.return_notes && (
-              <>
-                <div className="my-5 border-t border-slate-100" />
-
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Observação da devolução
-                </p>
-
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                  {
-                    accountability.return_notes
-                  }
-                </p>
-              </>
-            )}
-          </section>
-
           {/* DOCUMENTOS */}
 
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="font-semibold text-slate-950">
                 Documentos
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Nota Fiscal e
-                comprovante da
-                transação.
+                Notas fiscais,
+                cupons e comprovantes.
               </p>
             </div>
 
-            <div className="grid gap-4 p-6 md:grid-cols-2">
-              <DocumentCard
-                title="Nota Fiscal / Cupom Fiscal"
-                document={
-                  invoice
-                }
-              />
+            <div className="p-6">
+              {documents.length ===
+              0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">
+                  Nenhum documento
+                  encontrado.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {documents.map(
+                    (document) => (
+                      <div
+                        key={
+                          document.id
+                        }
+                        className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          {document.category ===
+                          "payment_receipt" ? (
+                            <Receipt
+                              size={18}
+                              className="shrink-0 text-[#AF1B1B]"
+                            />
+                          ) : (
+                            <FileText
+                              size={18}
+                              className="shrink-0 text-[#AF1B1B]"
+                            />
+                          )}
 
-              <DocumentCard
-                title="Comprovante da transação"
-                document={
-                  receipt
-                }
-              />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              {
+                                document.file_name
+                              }
+                            </p>
+
+                            <p className="mt-0.5 text-[10px] text-slate-400">
+                              {documentLabel(
+                                document.category
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {document.signedUrl && (
+                          <div className="flex gap-2">
+                            <a
+                              href={
+                                document.signedUrl
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              <ExternalLink
+                                size={14}
+                              />
+
+                              Visualizar
+                            </a>
+
+                            <a
+                              href={
+                                document.signedUrl
+                              }
+                              download={
+                                document.file_name
+                              }
+                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white hover:bg-slate-800"
+                            >
+                              <Download
+                                size={14}
+                              />
+
+                              Baixar
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           </section>
-
-          {/* CONFERÊNCIA ANTERIOR */}
-
-          {accountability.review_notes && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Última observação da conferência
-              </p>
-
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                {
-                  accountability.review_notes
-                }
-              </p>
-
-              {accountability.reviewed_at && (
-                <p className="mt-3 text-xs text-slate-400">
-                  {formatDateTime(
-                    accountability.reviewed_at
-                  )}
-                </p>
-              )}
-            </section>
-          )}
         </div>
 
-        {/* ===================================================
-            PAINEL DE DECISÃO
-        ==================================================== */}
+        {/* PAINEL */}
 
         <aside>
-          <section className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold text-[#AF1B1B]">
-              Financeiro
-            </p>
+          <div className="sticky top-24 space-y-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-semibold text-[#AF1B1B]">
+                Conferência Financeira
+              </p>
 
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">
-              Conferência
-            </h2>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                Analisar prestação
+              </h2>
 
-            <p className="mb-6 mt-2 text-xs leading-5 text-slate-500">
-              Confira os valores e
-              documentos antes de
-              aprovar ou solicitar uma
-              correção ao colaborador.
-            </p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                A aprovação encerra
+                definitivamente o
+                processo.
+              </p>
 
-            {difference < 0 && (
-              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-xs font-semibold text-amber-800">
-                  Atenção
-                </p>
+              <div className="mt-6">
+                {canReview ? (
+                  <ReviewForm
+                    requestId={
+                      id
+                    }
+                  />
+                ) : summary.status ===
+                  "awaiting_return" ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-900">
+                      Correção solicitada
+                    </p>
 
-                <p className="mt-1 text-xs leading-5 text-amber-700">
-                  O valor utilizado
-                  ultrapassou o valor
-                  aprovado em{" "}
-                  <strong>
-                    {formatCurrency(
-                      Math.abs(
-                        difference
-                      )
-                    )}
-                  </strong>
-                  .
-                </p>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">
+                      O formulário
+                      externo está
+                      disponível para
+                      novo envio.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <CheckCircle2
+                      size={18}
+                      className="text-emerald-700"
+                    />
+
+                    <p className="mt-3 text-sm font-semibold text-emerald-900">
+                      Processo concluído
+                    </p>
+
+                    <p className="mt-1 text-xs text-emerald-700">
+                      Esta prestação
+                      já foi aprovada.
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
+            </section>
 
-            <ReviewForm
-              requestId={
-                request.id
-              }
-              status={
-                request.status
-              }
-              previousNotes={
-                accountability.review_notes
-              }
-            />
-          </section>
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Devolução registrada
+              </p>
+
+              <p className="mt-2 text-sm font-semibold text-slate-800">
+                {dateTime(
+                  summary.returned_at
+                )}
+              </p>
+            </section>
+          </div>
         </aside>
       </div>
     </div>
   );
 }
 
-function ValueCard({
+function Info({
+  icon: Icon,
   label,
   value,
-  highlight = false,
-  danger = false,
 }: {
+  icon:
+    typeof User;
+
   label: string;
   value: string;
-  highlight?: boolean;
-  danger?: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      <Icon
+        size={18}
+        className="text-slate-400"
+      />
+
+      <p className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
         {label}
       </p>
 
-      <p
-        className={[
-          "mt-2 text-xl font-semibold",
-          danger
-            ? "text-red-600"
-            : highlight
-              ? "text-[#AF1B1B]"
-              : "text-slate-950",
-        ].join(" ")}
-      >
+      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
         {value}
       </p>
     </div>
   );
 }
 
-function DataField({
-  icon: Icon,
+function Value({
   label,
   value,
+  alert = false,
 }: {
-  icon: ElementType;
   label: string;
-  value: string;
+
+  value:
+    | number
+    | string
+    | null;
+
+  alert?: boolean;
 }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-        <Icon size={16} />
-      </div>
+    <div
+      className={[
+        "rounded-2xl border bg-white p-5 shadow-sm",
+        alert
+          ? "border-red-200"
+          : "border-slate-200",
+      ].join(" ")}
+    >
+      <CircleDollarSign
+        size={18}
+        className={
+          alert
+            ? "text-red-500"
+            : "text-slate-400"
+        }
+      />
 
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          {label}
-        </p>
+      <p className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
 
-        <p className="mt-1 break-words text-sm font-medium text-slate-700">
-          {value}
-        </p>
-      </div>
+      <p
+        className={[
+          "mt-1 text-lg font-bold",
+          alert
+            ? "text-red-700"
+            : "text-slate-950",
+        ].join(" ")}
+      >
+        {currency(
+          value
+        )}
+      </p>
     </div>
   );
 }
 
-function DocumentCard({
-  title,
-  document,
-}: {
-  title: string;
+function documentLabel(
+  category: string
+) {
+  switch (
+    category
+  ) {
+    case "invoice":
+      return "Nota Fiscal / Cupom";
 
-  document:
-    | {
-        file_name: string;
-        file_size:
-          | number
-          | string
-          | null;
-        mime_type: string;
-        signedUrl:
-          | string
-          | null;
-      }
-    | undefined;
-}) {
-  if (!document) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-        <FileText
-          size={20}
-          className="text-red-400"
-        />
+    case "payment_receipt":
+      return "Comprovante da transação";
 
-        <p className="mt-3 text-sm font-semibold text-red-700">
-          {title}
-        </p>
+    case "accountability":
+      return "Prestação de contas";
 
-        <p className="mt-1 text-xs text-red-500">
-          Documento não encontrado.
-        </p>
-      </div>
-    );
+    default:
+      return "Outro documento";
   }
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm">
-        <FileText
-          size={19}
-        />
-      </div>
-
-      <p className="mt-4 text-sm font-semibold text-slate-800">
-        {title}
-      </p>
-
-      <p className="mt-1 truncate text-xs text-slate-500">
-        {
-          document.file_name
-        }
-      </p>
-
-      <p className="mt-1 text-[11px] text-slate-400">
-        {formatFileSize(
-          document.file_size
-        )}
-      </p>
-
-      {document.signedUrl ? (
-        <a
-          href={
-            document.signedUrl
-          }
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#AF1B1B] transition hover:underline"
-        >
-          Abrir documento
-
-          <ExternalLink
-            size={14}
-          />
-        </a>
-      ) : (
-        <p className="mt-4 text-xs font-medium text-red-500">
-          Não foi possível gerar
-          acesso ao documento.
-        </p>
-      )}
-    </div>
-  );
 }

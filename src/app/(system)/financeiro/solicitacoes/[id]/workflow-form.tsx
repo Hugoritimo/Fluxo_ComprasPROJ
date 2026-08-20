@@ -1,13 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import {
+  useActionState,
+  useRef,
+} from "react";
 
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
+  CircleDollarSign,
   CreditCard,
+  FileCheck2,
   LoaderCircle,
-  Save,
+  MessageSquareWarning,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react";
 
 import {
@@ -54,40 +62,55 @@ type WorkflowFormProps = {
   cards: CardOption[];
 };
 
-type StatusOption = {
-  value: string;
-  label: string;
-};
+type WorkflowAction =
+  | "approve_release"
+  | "request_adjustment"
+  | "reject";
 
 const initialState: FinanceWorkflowState = {
   error: null,
   success: null,
 };
 
-const statusLabels: Record<
-  string,
-  string
-> = {
-  draft: "Rascunho",
-  submitted: "Solicitação enviada",
-  under_review: "Em análise",
-  awaiting_information:
-    "Aguardando informações",
-  awaiting_approval:
-    "Aguardando aprovação",
-  approved: "Aprovado",
-  rejected: "Reprovado",
-  card_reserved: "Cartão reservado",
-  card_delivered: "Cartão liberado",
-  in_use: "Em utilização",
-  awaiting_return:
-    "Aguardando devolução",
-  returned: "Devolvido",
-  accountability_review:
-    "Em conferência",
-  completed: "Concluído",
-  cancelled: "Cancelado",
-};
+const visibleStages = [
+  {
+    number: 1,
+    label: "Solicitado",
+  },
+  {
+    number: 2,
+    label: "Cartão liberado",
+  },
+  {
+    number: 3,
+    label: "Prestação de contas",
+  },
+  {
+    number: 4,
+    label: "Concluído",
+  },
+];
+
+const approvalStatuses = [
+  "draft",
+  "submitted",
+  "under_review",
+  "awaiting_information",
+  "awaiting_approval",
+  "approved",
+  "card_reserved",
+];
+
+const cardReleasedStatuses = [
+  "card_delivered",
+  "in_use",
+  "awaiting_return",
+];
+
+const accountabilityStatuses = [
+  "returned",
+  "accountability_review",
+];
 
 const cardStatusLabels: Record<
   string,
@@ -98,157 +121,6 @@ const cardStatusLabels: Record<
   in_use: "Em uso",
   blocked: "Bloqueado",
   inactive: "Inativo",
-};
-
-const workflowTransitions: Record<
-  string,
-  StatusOption[]
-> = {
-  draft: [
-    {
-      value: "submitted",
-      label: "Solicitação enviada",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  submitted: [
-    {
-      value: "under_review",
-      label: "Iniciar análise",
-    },
-    {
-      value: "awaiting_information",
-      label: "Aguardar informações",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  under_review: [
-    {
-      value: "awaiting_information",
-      label: "Solicitar informações",
-    },
-    {
-      value: "awaiting_approval",
-      label: "Enviar para aprovação",
-    },
-    {
-      value: "rejected",
-      label: "Reprovar",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  awaiting_information: [
-    {
-      value: "under_review",
-      label: "Retomar análise",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  awaiting_approval: [
-    {
-      value: "approved",
-      label: "Aprovar solicitação",
-    },
-    {
-      value: "rejected",
-      label: "Reprovar solicitação",
-    },
-    {
-      value: "under_review",
-      label: "Retornar para análise",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  approved: [
-    {
-      value: "card_reserved",
-      label: "Reservar cartão",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  card_reserved: [
-    {
-      value: "card_delivered",
-      label: "Liberar cartão",
-    },
-    {
-      value: "approved",
-      label: "Desfazer reserva",
-    },
-    {
-      value: "cancelled",
-      label: "Cancelar solicitação",
-    },
-  ],
-
-  card_delivered: [
-    {
-      value: "in_use",
-      label:
-        "Marcar como em utilização",
-    },
-    {
-      value: "awaiting_return",
-      label: "Aguardar devolução",
-    },
-  ],
-
-  in_use: [
-    {
-      value: "awaiting_return",
-      label: "Aguardar devolução",
-    },
-  ],
-
-  awaiting_return: [],
-
-  returned: [
-    {
-      value:
-        "accountability_review",
-      label: "Iniciar conferência",
-    },
-  ],
-
-  accountability_review: [
-    {
-      value: "completed",
-      label:
-        "Concluir prestação de contas",
-    },
-    {
-      value: "returned",
-      label: "Retornar devolução",
-    },
-  ],
-
-  completed: [],
-  rejected: [],
-  cancelled: [],
 };
 
 const fieldClasses =
@@ -270,53 +142,118 @@ export default function WorkflowForm({
     initialState
   );
 
-  const nextStatuses =
-    workflowTransitions[
+  const formRef =
+    useRef<HTMLFormElement>(
+      null
+    );
+
+  const workflowActionRef =
+    useRef<HTMLInputElement>(
+      null
+    );
+
+  // ==========================================================
+  // SUBMISSÃO CONTROLADA
+  //
+  // 1. Grava a ação no hidden
+  // 2. Confirma que o valor foi gravado
+  // 3. Só então envia o formulário
+  // ==========================================================
+
+  function submitWorkflowAction(
+    action: WorkflowAction
+  ) {
+    if (
+      !workflowActionRef.current ||
+      !formRef.current
+    ) {
+      return;
+    }
+
+    workflowActionRef.current.value =
+      action;
+
+    formRef.current.requestSubmit();
+  }
+
+  const currentStage =
+    getCurrentStage(
       request.status
-    ] ?? [];
+    );
 
-  const isTerminal =
-    nextStatuses.length === 0;
+  const canApprove =
+    approvalStatuses.includes(
+      request.status
+    );
 
-  const requiresApprovedAmount =
-    [
-      "awaiting_approval",
-      "approved",
-      "card_reserved",
-      "card_delivered",
-      "in_use",
-      "awaiting_return",
-      "returned",
-      "accountability_review",
-      "completed",
-    ].includes(request.status);
+  const cardReleased =
+    cardReleasedStatuses.includes(
+      request.status
+    );
 
-  const requiresCard =
-    [
-      "approved",
-      "card_reserved",
-      "card_delivered",
-      "in_use",
-      "awaiting_return",
-      "returned",
-      "accountability_review",
-      "completed",
-    ].includes(request.status);
+  const accountability =
+    accountabilityStatuses.includes(
+      request.status
+    );
+
+  const completed =
+    request.status ===
+    "completed";
+
+  const rejected =
+    request.status ===
+    "rejected";
+
+  const cancelled =
+    request.status ===
+    "cancelled";
+
+  const awaitingAdjustment =
+    request.status ===
+    "awaiting_information";
+
+  const currentCardAvailable =
+    request.assigned_card_id
+      ? cards.some(
+          (card) =>
+            card.id ===
+            request.assigned_card_id
+        )
+      : false;
+
+  const hasSelectableCard =
+    currentCardAvailable ||
+    cards.some(
+      (card) =>
+        card.active &&
+        card.status ===
+          "available"
+    );
 
   return (
     <form
+      ref={formRef}
       action={formAction}
-      className="space-y-5"
+      className="space-y-6"
     >
+      {/* CAMPOS INTERNOS */}
+
       <input
         type="hidden"
         name="request_id"
         value={request.id}
       />
 
-      {/* =====================================================
-          ERRO
-      ====================================================== */}
+      <input
+        ref={
+          workflowActionRef
+        }
+        type="hidden"
+        name="workflow_action"
+        defaultValue=""
+      />
+
+      {/* ERRO */}
 
       {state.error && (
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
@@ -331,9 +268,7 @@ export default function WorkflowForm({
         </div>
       )}
 
-      {/* =====================================================
-          SUCESSO
-      ====================================================== */}
+      {/* SUCESSO */}
 
       {state.success && (
         <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-700">
@@ -349,320 +284,559 @@ export default function WorkflowForm({
       )}
 
       {/* =====================================================
-          STATUS ATUAL
+          FLUXO COM 4 ETAPAS
       ====================================================== */}
 
       <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Status atual
-        </label>
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-slate-800">
+            Andamento da solicitação
+          </p>
 
-        <div className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
-          <p className="text-sm font-semibold text-slate-900">
-            {statusLabels[
-              request.status
-            ] ??
-              request.status}
+          <p className="mt-1 text-[11px] text-slate-500">
+            O processo possui apenas
+            quatro etapas principais.
           </p>
         </div>
-      </div>
 
-      {/* =====================================================
-          PRÓXIMO STATUS
-      ====================================================== */}
+        <div className="grid grid-cols-4 gap-2">
+          {visibleStages.map(
+            (stage) => {
+              const done =
+                currentStage >
+                stage.number;
 
-      {!isTerminal ? (
-        <div>
-          <label className="mb-2 block text-xs font-semibold text-slate-700">
-            Próximo andamento
-          </label>
+              const active =
+                currentStage ===
+                stage.number;
 
-          <select
-            name="status"
-            defaultValue=""
-            required
-            disabled={pending}
-            className={fieldClasses}
-          >
-            <option
-              value=""
-              disabled
-              className="text-slate-500"
-            >
-              Selecione o próximo andamento
-            </option>
-
-            {nextStatuses.map(
-              (status) => (
-                <option
+              return (
+                <div
                   key={
-                    status.value
+                    stage.number
                   }
-                  value={
-                    status.value
-                  }
-                  className="bg-white text-slate-900"
+                  className="min-w-0"
                 >
-                  {status.label}
-                </option>
-              )
-            )}
-          </select>
+                  <div
+                    className={[
+                      "flex h-9 w-full items-center justify-center rounded-lg border transition",
+                      done
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : active
+                          ? "border-[#AF1B1B]/30 bg-[#AF1B1B]/[0.06] text-[#AF1B1B]"
+                          : "border-slate-200 bg-slate-50 text-slate-400",
+                    ].join(
+                      " "
+                    )}
+                  >
+                    {done ? (
+                      <Check
+                        size={15}
+                      />
+                    ) : (
+                      <span className="text-xs font-bold">
+                        {
+                          stage.number
+                        }
+                      </span>
+                    )}
+                  </div>
 
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">
-            O sistema exibe somente os
-            próximos status permitidos
-            para esta etapa.
-          </p>
-        </div>
-      ) : (
-        <input
-          type="hidden"
-          name="status"
-          value={request.status}
-        />
-      )}
-
-      {/* =====================================================
-          VALOR SOLICITADO
-      ====================================================== */}
-
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Valor solicitado
-        </label>
-
-        <div className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900">
-          {formatCurrency(
-            Number(
-              request.estimated_amount
-            )
+                  <p
+                    className={[
+                      "mt-2 truncate text-center text-[10px] font-semibold",
+                      active
+                        ? "text-slate-900"
+                        : done
+                          ? "text-emerald-700"
+                          : "text-slate-400",
+                    ].join(
+                      " "
+                    )}
+                    title={
+                      stage.label
+                    }
+                  >
+                    {
+                      stage.label
+                    }
+                  </p>
+                </div>
+              );
+            }
           )}
         </div>
       </div>
 
-      {/* =====================================================
-          VALOR APROVADO
-      ====================================================== */}
+      {/* AGUARDANDO AJUSTE */}
 
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Valor aprovado
-        </label>
-
-        <input
-          name="approved_amount"
-          type="number"
-          min="0"
-          step="0.01"
-          defaultValue={
-            request.approved_amount ??
-            request.estimated_amount
-          }
-          disabled={
-            pending ||
-            isTerminal
-          }
-          className={fieldClasses}
-        />
-
-        {!requiresApprovedAmount && (
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">
-            O valor pode ser ajustado
-            durante a análise antes da
-            aprovação.
-          </p>
-        )}
-      </div>
-
-      {/* =====================================================
-          CARTÃO
-      ====================================================== */}
-
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Cartão
-        </label>
-
-        <div className="relative">
-          <CreditCard
-            size={17}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+      {awaitingAdjustment && (
+        <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <MessageSquareWarning
+            size={18}
+            className="mt-0.5 shrink-0 text-amber-700"
           />
 
-          <select
-            name="assigned_card_id"
-            defaultValue={
-              request.assigned_card_id ??
-              ""
-            }
-            disabled={
-              pending ||
-              isTerminal
-            }
-            className={`${fieldClasses} pl-10`}
-          >
-            <option
-              value=""
-              className="bg-white text-slate-700"
-            >
-              Nenhum cartão selecionado
-            </option>
+          <div>
+            <p className="text-xs font-semibold text-amber-900">
+              Aguardando ajuste do
+              solicitante
+            </p>
 
-            {cards.map(
-              (card) => (
-                <option
-                  key={card.id}
-                  value={card.id}
-                  disabled={
-                    !card.active ||
-                    card.status ===
-                      "blocked" ||
-                    card.status ===
-                      "inactive" ||
-                    (
-                      card.status !==
-                        "available" &&
-                      card.id !==
-                        request.assigned_card_id
-                    )
-                  }
-                  className="bg-white text-slate-900"
-                >
-                  {card.name}
-                  {" · "}
-                  {card.bank_name ??
-                    "Banco não informado"}
-                  {" · •••• "}
-                  {
-                    card.last_four_digits
-                  }
-                  {" · "}
-                  {cardStatusLabels[
-                    card.status
-                  ] ??
-                    card.status}
-                </option>
-              )
-            )}
-          </select>
-        </div>
-
-        {cards.length === 0 && (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-[11px] leading-5 text-amber-800">
-              Nenhum cartão corporativo
-              cadastrado. É possível
-              analisar e aprovar, mas
-              será necessário cadastrar
-              um cartão antes de
-              reservar.
+            <p className="mt-1 text-[11px] leading-5 text-amber-800">
+              A solicitação continua na
+              etapa Solicitado.
             </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {!requiresCard && (
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">
-            O cartão só será obrigatório
-            quando a solicitação chegar
-            à etapa de reserva.
-          </p>
-        )}
-      </div>
+      {/* REPROVADO */}
 
-      {/* =====================================================
-          PREVISÃO DE DEVOLUÇÃO
-      ====================================================== */}
+      {rejected && (
+        <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <XCircle
+            size={18}
+            className="mt-0.5 shrink-0 text-red-700"
+          />
 
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Previsão de devolução
-        </label>
+          <div>
+            <p className="text-xs font-semibold text-red-900">
+              Solicitação reprovada
+            </p>
 
-        <input
-          type="date"
-          name="expected_return_date"
-          defaultValue={
-            request.expected_return_date ??
-            ""
-          }
-          disabled={
-            pending ||
-            isTerminal
-          }
-          className={`${fieldClasses} [color-scheme:light]`}
-        />
+            <p className="mt-1 text-[11px] leading-5 text-red-700">
+              O processo foi encerrado
+              pelo Financeiro.
+            </p>
+          </div>
+        </div>
+      )}
 
-        <p className="mt-2 text-[11px] leading-5 text-slate-600">
-          Será obrigatória antes da
-          liberação do cartão.
-        </p>
-      </div>
+      {/* CANCELADO */}
 
-      {/* =====================================================
-          OBSERVAÇÕES
-      ====================================================== */}
-
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-slate-700">
-          Observações do Financeiro
-        </label>
-
-        <textarea
-          name="finance_notes"
-          defaultValue={
-            request.finance_notes ??
-            ""
-          }
-          disabled={
-            pending ||
-            isTerminal
-          }
-          rows={5}
-          placeholder="Informações internas sobre análise, aprovação ou liberação..."
-          className={textareaClasses}
-        />
-      </div>
-
-      {/* =====================================================
-          ETAPA FINAL
-      ====================================================== */}
-
-      {isTerminal ? (
+      {cancelled && (
         <div className="rounded-xl border border-slate-300 bg-slate-50 p-4">
           <p className="text-xs font-semibold text-slate-800">
-            Nenhuma movimentação financeira
-            disponível nesta etapa.
+            Solicitação cancelada
           </p>
 
           <p className="mt-1 text-[11px] leading-5 text-slate-600">
-            O processo está aguardando uma
-            ação de outra etapa do sistema
-            ou já foi encerrado.
+            Não existem novas ações
+            disponíveis.
           </p>
         </div>
-      ) : (
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#AF1B1B] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#921717] focus:outline-none focus:ring-4 focus:ring-[#AF1B1B]/20 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? (
-            <LoaderCircle
-              size={17}
-              className="animate-spin"
-            />
-          ) : (
-            <Save size={17} />
-          )}
+      )}
 
-          {pending
-            ? "Atualizando..."
-            : "Atualizar solicitação"}
-        </button>
+      {/* =====================================================
+          SOLICITAÇÃO / APROVAÇÃO
+      ====================================================== */}
+
+      {canApprove &&
+        !rejected &&
+        !cancelled && (
+          <>
+            <div className="rounded-xl border border-[#AF1B1B]/20 bg-[#AF1B1B]/[0.03] p-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck
+                  size={19}
+                  className="mt-0.5 shrink-0 text-[#AF1B1B]"
+                />
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">
+                    Decisão do Financeiro
+                  </p>
+
+                  <p className="mt-1 text-[11px] leading-5 text-slate-600">
+                    A aprovação e a
+                    liberação do cartão
+                    são realizadas em uma
+                    única ação.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* VALOR SOLICITADO */}
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Valor solicitado
+              </label>
+
+              <div className="flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
+                <CircleDollarSign
+                  size={17}
+                  className="text-slate-500"
+                />
+
+                <span className="text-sm font-semibold text-slate-900">
+                  {formatCurrency(
+                    Number(
+                      request.estimated_amount
+                    )
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* VALOR APROVADO */}
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Valor aprovado *
+              </label>
+
+              <input
+                name="approved_amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                defaultValue={
+                  request.approved_amount ??
+                  request.estimated_amount
+                }
+                disabled={
+                  pending
+                }
+                className={
+                  fieldClasses
+                }
+              />
+            </div>
+
+            {/* CARTÃO */}
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Cartão que será
+                liberado *
+              </label>
+
+              <div className="relative">
+                <CreditCard
+                  size={17}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                />
+
+                <select
+                  name="assigned_card_id"
+                  defaultValue={
+                    request.assigned_card_id ??
+                    ""
+                  }
+                  disabled={
+                    pending
+                  }
+                  className={`${fieldClasses} pl-10`}
+                >
+                  <option value="">
+                    Selecione um cartão
+                  </option>
+
+                  {cards.map(
+                    (card) => (
+                      <option
+                        key={
+                          card.id
+                        }
+                        value={
+                          card.id
+                        }
+                        disabled={
+                          !card.active ||
+                          card.status ===
+                            "blocked" ||
+                          card.status ===
+                            "inactive" ||
+                          (
+                            card.status !==
+                              "available" &&
+                            card.id !==
+                              request.assigned_card_id
+                          )
+                        }
+                      >
+                        {
+                          card.name
+                        }
+                        {" · "}
+                        {card.bank_name ??
+                          "Banco não informado"}
+                        {" · •••• "}
+                        {
+                          card.last_four_digits
+                        }
+                        {" · "}
+                        {cardStatusLabels[
+                          card.status
+                        ] ??
+                          card.status}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+
+              {!hasSelectableCard && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <p className="text-[11px] leading-5 text-amber-800">
+                    Nenhum cartão
+                    corporativo está
+                    disponível.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* DATA DEVOLUÇÃO */}
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Previsão de devolução *
+              </label>
+
+              <input
+                type="date"
+                name="expected_return_date"
+                defaultValue={
+                  request.expected_return_date ??
+                  ""
+                }
+                disabled={
+                  pending
+                }
+                className={`${fieldClasses} [color-scheme:light]`}
+              />
+            </div>
+
+            {/* OBSERVAÇÕES */}
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Observações do
+                Financeiro
+              </label>
+
+              <textarea
+                name="finance_notes"
+                defaultValue={
+                  request.finance_notes ??
+                  ""
+                }
+                disabled={
+                  pending
+                }
+                rows={4}
+                placeholder="Use este campo para orientações, solicitação de ajustes ou motivo da reprovação..."
+                className={
+                  textareaClasses
+                }
+              />
+            </div>
+
+            {/* =================================================
+                APROVAR
+            ================================================= */}
+
+            <button
+              type="button"
+              onClick={() =>
+                submitWorkflowAction(
+                  "approve_release"
+                )
+              }
+              disabled={
+                pending ||
+                !hasSelectableCard
+              }
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#AF1B1B] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#921717] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pending ? (
+                <LoaderCircle
+                  size={18}
+                  className="animate-spin"
+                />
+              ) : (
+                <ShieldCheck
+                  size={18}
+                />
+              )}
+
+              {pending
+                ? "Processando..."
+                : "Aprovar e liberar cartão"}
+            </button>
+
+            {/* =================================================
+                AJUSTE / REPROVAÇÃO
+            ================================================= */}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {!awaitingAdjustment && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    submitWorkflowAction(
+                      "request_adjustment"
+                    )
+                  }
+                  disabled={
+                    pending
+                  }
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <MessageSquareWarning
+                    size={16}
+                  />
+
+                  Solicitar ajuste
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  submitWorkflowAction(
+                    "reject"
+                  )
+                }
+                disabled={
+                  pending
+                }
+                className={[
+                  "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50",
+                  awaitingAdjustment
+                    ? "sm:col-span-2"
+                    : "",
+                ].join(
+                  " "
+                )}
+              >
+                <XCircle
+                  size={16}
+                />
+
+                Reprovar solicitação
+              </button>
+            </div>
+          </>
+        )}
+
+      {/* =====================================================
+          CARTÃO LIBERADO
+      ====================================================== */}
+
+      {cardReleased && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex gap-3">
+            <CreditCard
+              size={20}
+              className="mt-0.5 shrink-0 text-emerald-700"
+            />
+
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                Cartão liberado
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-emerald-800">
+                A aprovação foi
+                concluída. O próximo
+                passo é a prestação de
+                contas pelo solicitante.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          PRESTAÇÃO
+      ====================================================== */}
+
+      {accountability && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex gap-3">
+            <FileCheck2
+              size={20}
+              className="mt-0.5 shrink-0 text-blue-700"
+            />
+
+            <div>
+              <p className="text-sm font-semibold text-blue-900">
+                Prestação de contas
+                recebida
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-blue-800">
+                A conferência deve ser
+                realizada em Devoluções
+                do Financeiro.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          CONCLUÍDO
+      ====================================================== */}
+
+      {completed && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex gap-3">
+            <CheckCircle2
+              size={20}
+              className="mt-0.5 shrink-0 text-emerald-700"
+            />
+
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                Processo concluído
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-emerald-800">
+                A compra e a prestação
+                de contas foram
+                finalizadas.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </form>
   );
+}
+
+function getCurrentStage(
+  status: string
+) {
+  if (
+    status ===
+    "completed"
+  ) {
+    return 4;
+  }
+
+  if (
+    accountabilityStatuses.includes(
+      status
+    )
+  ) {
+    return 3;
+  }
+
+  if (
+    cardReleasedStatuses.includes(
+      status
+    )
+  ) {
+    return 2;
+  }
+
+  return 1;
 }
 
 function formatCurrency(

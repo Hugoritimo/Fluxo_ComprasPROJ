@@ -11,7 +11,6 @@ import {
   CalendarDays,
   CircleDollarSign,
   CreditCard,
-  Hash,
   LoaderCircle,
   Mail,
   Send,
@@ -56,9 +55,9 @@ export default function CardRequestForm({
   ] = useState("");
 
   const today =
-    new Intl.DateTimeFormat("pt-BR").format(
-      new Date()
-    );
+    new Intl.DateTimeFormat(
+      "pt-BR"
+    ).format(new Date());
 
   return (
     <form
@@ -110,12 +109,18 @@ export default function CardRequestForm({
             </p>
 
             <p className="mt-2 text-xs leading-5 text-amber-900">
+              O número do pedido no Sienge não
+              é necessário nesta etapa. Ele
+              será obrigatório somente no
+              momento da devolução e prestação
+              de contas do cartão.
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-amber-800">
               Após a utilização do cartão,
-              será obrigatório anexar o
-              comprovante da transação e a
-              nota fiscal ou cupom fiscal
-              contendo a descrição dos itens
-              adquiridos.
+              também será obrigatório anexar
+              a Nota Fiscal ou Cupom Fiscal e
+              o comprovante da transação.
             </p>
           </div>
         </div>
@@ -152,42 +157,16 @@ export default function CardRequestForm({
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Informe os dados vinculados ao
-            pedido criado no Sienge.
+            Informe os dados iniciais da
+            compra que será realizada com o
+            cartão corporativo.
           </p>
         </div>
 
         <div className="grid gap-5 p-6 md:grid-cols-2">
-          {/* PEDIDO SIENGE */}
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-800">
-              Nº do Pedido no Sienge *
-            </label>
-
-            <div className="relative">
-              <Hash
-                size={17}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-              />
-
-              <input
-                name="sienge_request_number"
-                required
-                disabled={pending}
-                placeholder="Ex.: 18542"
-                className={`${inputBaseClasses} pl-10 pr-4`}
-              />
-            </div>
-
-            <p className="mt-2 text-[11px] leading-4 text-slate-600">
-              A solicitação não poderá ser
-              enviada sem o número cadastrado
-              previamente no Sienge.
-            </p>
-          </div>
-
-          {/* CENTRO DE CUSTO */}
+          {/* =================================================
+              CENTRO DE CUSTO
+          ================================================= */}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">
@@ -210,7 +189,9 @@ export default function CardRequestForm({
             </div>
           </div>
 
-          {/* FORNECEDOR */}
+          {/* =================================================
+              FORNECEDOR
+          ================================================= */}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">
@@ -233,7 +214,9 @@ export default function CardRequestForm({
             </div>
           </div>
 
-          {/* VALOR */}
+          {/* =================================================
+              VALOR
+          ================================================= */}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">
@@ -257,26 +240,23 @@ export default function CardRequestForm({
             </div>
           </div>
 
-          {/* FORMA DE PAGAMENTO */}
+          {/* =================================================
+              FORMA DE PAGAMENTO
+          ================================================= */}
 
-          <div className="md:col-span-2">
-            <label className="mb-3 block text-sm font-semibold text-slate-800">
-              Tipo de pagamento *
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-800">
+              Tipo de pagamento
             </label>
 
-            <div className="flex items-center gap-3 rounded-xl border border-[#AF1B1B]/25 bg-[#AF1B1B]/[0.04] p-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#AF1B1B]/10 text-[#AF1B1B]">
-                <CreditCard size={18} />
+            <div className="flex h-11 items-center gap-3 rounded-xl border border-[#AF1B1B]/25 bg-[#AF1B1B]/[0.04] px-4">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#AF1B1B]/10 text-[#AF1B1B]">
+                <CreditCard size={17} />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900">
                   Cartão de crédito
-                </p>
-
-                <p className="mt-0.5 text-xs text-slate-600">
-                  Forma de pagamento desta
-                  solicitação
                 </p>
               </div>
             </div>
@@ -301,7 +281,9 @@ export default function CardRequestForm({
         </div>
 
         <div className="space-y-6 p-6">
-          {/* MOTIVO */}
+          {/* =================================================
+              MOTIVO
+          ================================================= */}
 
           <div>
             <label className="mb-3 block text-sm font-semibold text-slate-800">
@@ -347,7 +329,8 @@ export default function CardRequestForm({
               />
             </div>
 
-            {purchaseReason === "other" && (
+            {purchaseReason ===
+              "other" && (
               <input
                 name="purchase_reason_other"
                 required
@@ -358,7 +341,9 @@ export default function CardRequestForm({
             )}
           </div>
 
-          {/* FINALIDADE */}
+          {/* =================================================
+              FINALIDADE
+          ================================================= */}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">
@@ -372,11 +357,15 @@ export default function CardRequestForm({
               disabled={pending}
               rows={5}
               placeholder="Informe onde será utilizado, o tipo de material e qual a necessidade da compra."
-              className={textareaBaseClasses}
+              className={
+                textareaBaseClasses
+              }
             />
           </div>
 
-          {/* OBSERVAÇÕES */}
+          {/* =================================================
+              OBSERVAÇÕES
+          ================================================= */}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">
@@ -388,7 +377,9 @@ export default function CardRequestForm({
               disabled={pending}
               rows={3}
               placeholder="Informações complementares, caso necessário."
-              className={textareaBaseClasses}
+              className={
+                textareaBaseClasses
+              }
             />
           </div>
         </div>

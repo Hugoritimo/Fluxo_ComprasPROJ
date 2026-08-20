@@ -9,8 +9,16 @@ export type CardRequestState = {
     error: string | null;
 };
 
-function parseMoney(value: FormDataEntryValue | null) {
-    let input = String(value ?? "").trim();
+// ============================================================
+// CONVERSÃO DE VALOR
+// ============================================================
+
+function parseMoney(
+    value: FormDataEntryValue | null
+) {
+    let input = String(
+        value ?? ""
+    ).trim();
 
     if (!input) {
         return 0;
@@ -27,62 +35,87 @@ function parseMoney(value: FormDataEntryValue | null) {
         input = input
             .replace(/\./g, "")
             .replace(",", ".");
-    } else if (input.includes(",")) {
-        input = input.replace(",", ".");
+    } else if (
+        input.includes(",")
+    ) {
+        input =
+            input.replace(",", ".");
     }
 
-    const parsed = Number(input);
+    const parsed =
+        Number(input);
 
-    return Number.isFinite(parsed)
+    return Number.isFinite(
+        parsed
+    )
         ? parsed
         : 0;
 }
+
+// ============================================================
+// CRIAR SOLICITAÇÃO
+// ============================================================
 
 export async function createCardRequest(
     _previousState: CardRequestState,
     formData: FormData
 ): Promise<CardRequestState> {
-    const siengeRequestNumber = String(
-        formData.get("sienge_request_number") ??
-        ""
-    ).trim();
+    // ==========================================================
+    // DADOS
+    // ==========================================================
 
-    const costCenterOrSite = String(
-        formData.get("cost_center_or_site") ??
-        ""
-    ).trim();
+    const costCenterOrSite =
+        String(
+            formData.get(
+                "cost_center_or_site"
+            ) ?? ""
+        ).trim();
 
-    const suppliersText = String(
-        formData.get("suppliers_text") ?? ""
-    ).trim();
+    const suppliersText =
+        String(
+            formData.get(
+                "suppliers_text"
+            ) ?? ""
+        ).trim();
 
-    const estimatedAmount = parseMoney(
-        formData.get("estimated_amount")
-    );
+    const estimatedAmount =
+        parseMoney(
+            formData.get(
+                "estimated_amount"
+            )
+        );
 
-    const purchaseReason = String(
-        formData.get("purchase_reason") ?? ""
-    ).trim();
+    const purchaseReason =
+        String(
+            formData.get(
+                "purchase_reason"
+            ) ?? ""
+        ).trim();
 
-    const purchaseReasonOther = String(
-        formData.get("purchase_reason_other") ??
-        ""
-    ).trim();
+    const purchaseReasonOther =
+        String(
+            formData.get(
+                "purchase_reason_other"
+            ) ?? ""
+        ).trim();
 
-    const purpose = String(
-        formData.get("purpose") ?? ""
-    ).trim();
+    const purpose =
+        String(
+            formData.get(
+                "purpose"
+            ) ?? ""
+        ).trim();
 
-    const notes = String(
-        formData.get("notes") ?? ""
-    ).trim();
+    const notes =
+        String(
+            formData.get(
+                "notes"
+            ) ?? ""
+        ).trim();
 
-    if (!siengeRequestNumber) {
-        return {
-            error:
-                "Informe o número do pedido no Sienge.",
-        };
-    }
+    // ==========================================================
+    // VALIDAÇÕES
+    // ==========================================================
 
     if (!costCenterOrSite) {
         return {
@@ -98,7 +131,9 @@ export async function createCardRequest(
         };
     }
 
-    if (estimatedAmount <= 0) {
+    if (
+        estimatedAmount <= 0
+    ) {
         return {
             error:
                 "Informe um valor previsto maior que zero.",
@@ -110,7 +145,9 @@ export async function createCardRequest(
             "emergency",
             "supplier_not_registered",
             "other",
-        ].includes(purchaseReason)
+        ].includes(
+            purchaseReason
+        )
     ) {
         return {
             error:
@@ -119,7 +156,8 @@ export async function createCardRequest(
     }
 
     if (
-        purchaseReason === "other" &&
+        purchaseReason ===
+        "other" &&
         !purchaseReasonOther
     ) {
         return {
@@ -135,25 +173,41 @@ export async function createCardRequest(
         };
     }
 
-    const supabase = await createClient();
+    // ==========================================================
+    // SUPABASE
+    // ==========================================================
 
-    const { data: claimsData } =
+    const supabase =
+        await createClient();
+
+    const {
+        data: claimsData,
+    } =
         await supabase.auth.getClaims();
 
-    if (!claimsData?.claims?.sub) {
+    const userId =
+        claimsData?.claims?.sub;
+
+    if (!userId) {
         return {
             error:
                 "Sua sessão expirou. Entre novamente no sistema.",
         };
     }
 
-    const { data, error } =
-        await supabase.rpc(
-            "create_credit_card_request",
-            {
-                p_sienge_request_number:
-                    siengeRequestNumber,
+    // ==========================================================
+    // NOVA RPC
+    //
+    // NÃO existe mais parâmetro Sienge aqui.
+    // ==========================================================
 
+    const {
+        data,
+        error,
+    } =
+        await supabase.rpc(
+            "create_credit_card_request_v2",
+            {
                 p_cost_center_or_site:
                     costCenterOrSite,
 
@@ -167,7 +221,8 @@ export async function createCardRequest(
                     purchaseReason,
 
                 p_purchase_reason_other:
-                    purchaseReasonOther || null,
+                    purchaseReasonOther ||
+                    null,
 
                 p_purpose:
                     purpose,
@@ -176,6 +231,10 @@ export async function createCardRequest(
                     notes || null,
             }
         );
+
+    // ==========================================================
+    // ERRO
+    // ==========================================================
 
     if (error) {
         console.error(
@@ -190,6 +249,10 @@ export async function createCardRequest(
         };
     }
 
+    // ==========================================================
+    // RETORNO
+    // ==========================================================
+
     if (!data) {
         return {
             error:
@@ -197,8 +260,35 @@ export async function createCardRequest(
         };
     }
 
-    revalidatePath("/dashboard");
-    revalidatePath("/solicitacoes");
+    // ==========================================================
+    // CACHE
+    // ==========================================================
 
-    redirect(`/solicitacoes/${data}`);
+    revalidatePath(
+        "/dashboard"
+    );
+
+    revalidatePath(
+        "/solicitacoes"
+    );
+
+    revalidatePath(
+        `/solicitacoes/${data}`
+    );
+
+    revalidatePath(
+        "/financeiro/solicitacoes"
+    );
+
+    revalidatePath(
+        `/financeiro/solicitacoes/${data}`
+    );
+
+    // ==========================================================
+    // REDIRECIONA
+    // ==========================================================
+
+    redirect(
+        `/solicitacoes/${data}`
+    );
 }

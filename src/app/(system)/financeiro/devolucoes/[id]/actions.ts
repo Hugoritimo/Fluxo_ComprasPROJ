@@ -8,68 +8,20 @@ import {
     createClient,
 } from "@/lib/supabase/server";
 
-export type ReviewReturnState = {
+export type ReviewResult = {
+    success: boolean;
     error: string | null;
-    success: string | null;
 };
 
-export async function reviewReturn(
-    _previousState: ReviewReturnState,
-    formData: FormData
-): Promise<ReviewReturnState> {
-    const requestId =
-        String(
-            formData.get(
-                "request_id"
-            ) ?? ""
-        ).trim();
-
-    const decision =
-        String(
-            formData.get(
-                "decision"
-            ) ?? ""
-        ).trim();
-
-    const reviewNotes =
-        String(
-            formData.get(
-                "review_notes"
-            ) ?? ""
-        ).trim();
-
+export async function approveAccountability(
+    requestId: string,
+    notes: string
+): Promise<ReviewResult> {
     if (!requestId) {
         return {
+            success: false,
             error:
-                "Solicitação inválida.",
-            success: null,
-        };
-    }
-
-    if (
-        ![
-            "approve",
-            "correction",
-        ].includes(
-            decision
-        )
-    ) {
-        return {
-            error:
-                "Selecione uma decisão válida.",
-            success: null,
-        };
-    }
-
-    if (
-        decision ===
-        "correction" &&
-        !reviewNotes
-    ) {
-        return {
-            error:
-                "Informe o motivo da correção solicitada.",
-            success: null,
+                "Não foi possível identificar a solicitação.",
         };
     }
 
@@ -77,66 +29,110 @@ export async function reviewReturn(
         await createClient();
 
     const {
-        data: claimsData,
-    } =
-        await supabase.auth.getClaims();
-
-    if (
-        !claimsData?.claims?.sub
-    ) {
-        return {
-            error:
-                "Sua sessão expirou. Entre novamente.",
-            success: null,
-        };
-    }
-
-    const {
         error,
     } =
         await supabase.rpc(
-            "review_card_return",
+            "finance_approve_accountability_v2",
             {
                 p_request_id:
                     requestId,
 
-                p_decision:
-                    decision,
-
-                p_review_notes:
-                    reviewNotes ||
+                p_notes:
+                    notes.trim() ||
                     null,
             }
         );
 
     if (error) {
         console.error(
-            "Erro na conferência:",
+            "Erro ao aprovar prestação:",
             error
         );
 
         return {
+            success: false,
             error:
                 error.message ||
-                "Não foi possível concluir a conferência.",
-            success: null,
+                "Não foi possível aprovar a prestação de contas.",
         };
     }
 
+    refreshPaths(
+        requestId
+    );
+
+    return {
+        success: true,
+        error: null,
+    };
+}
+
+export async function requestAccountabilityCorrection(
+    requestId: string,
+    notes: string
+): Promise<ReviewResult> {
+    if (!requestId) {
+        return {
+            success: false,
+            error:
+                "Não foi possível identificar a solicitação.",
+        };
+    }
+
+    if (!notes.trim()) {
+        return {
+            success: false,
+            error:
+                "Informe o que precisa ser corrigido.",
+        };
+    }
+
+    const supabase =
+        await createClient();
+
+    const {
+        error,
+    } =
+        await supabase.rpc(
+            "finance_request_accountability_correction_v2",
+            {
+                p_request_id:
+                    requestId,
+
+                p_notes:
+                    notes.trim(),
+            }
+        );
+
+    if (error) {
+        console.error(
+            "Erro ao solicitar correção:",
+            error
+        );
+
+        return {
+            success: false,
+            error:
+                error.message ||
+                "Não foi possível solicitar a correção.",
+        };
+    }
+
+    refreshPaths(
+        requestId
+    );
+
+    return {
+        success: true,
+        error: null,
+    };
+}
+
+function refreshPaths(
+    requestId: string
+) {
     revalidatePath(
         "/dashboard"
-    );
-
-    revalidatePath(
-        "/devolucoes"
-    );
-
-    revalidatePath(
-        "/solicitacoes"
-    );
-
-    revalidatePath(
-        `/solicitacoes/${requestId}`
     );
 
     revalidatePath(
@@ -155,19 +151,7 @@ export async function reviewReturn(
         `/financeiro/solicitacoes/${requestId}`
     );
 
-    if (
-        decision === "approve"
-    ) {
-        return {
-            error: null,
-            success:
-                "Prestação de contas aprovada e processo concluído.",
-        };
-    }
-
-    return {
-        error: null,
-        success:
-            "Correção solicitada ao colaborador.",
-    };
+    revalidatePath(
+        `/solicitacoes/${requestId}`
+    );
 }

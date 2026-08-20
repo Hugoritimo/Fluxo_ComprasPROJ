@@ -9,27 +9,17 @@ export type FinanceWorkflowState = {
     success: string | null;
 };
 
-const allowedStatuses = [
-    "submitted",
-    "under_review",
-    "awaiting_information",
-    "awaiting_approval",
-    "approved",
-    "rejected",
-    "card_reserved",
-    "card_delivered",
-    "in_use",
-    "awaiting_return",
-    "returned",
-    "accountability_review",
-    "completed",
-    "cancelled",
-] as const;
+type WorkflowAction =
+    | "approve_release"
+    | "request_adjustment"
+    | "reject";
 
 function parseMoney(
     value: FormDataEntryValue | null
 ) {
-    let input = String(value ?? "").trim();
+    let input = String(
+        value ?? ""
+    ).trim();
 
     if (!input) {
         return null;
@@ -46,13 +36,19 @@ function parseMoney(
         input = input
             .replace(/\./g, "")
             .replace(",", ".");
-    } else if (input.includes(",")) {
-        input = input.replace(",", ".");
+    } else if (
+        input.includes(",")
+    ) {
+        input =
+            input.replace(",", ".");
     }
 
-    const parsed = Number(input);
+    const parsed =
+        Number(input);
 
-    return Number.isFinite(parsed)
+    return Number.isFinite(
+        parsed
+    )
         ? parsed
         : null;
 }
@@ -60,24 +56,67 @@ function parseMoney(
 function optionalString(
     value: FormDataEntryValue | null
 ) {
-    const parsed = String(
-        value ?? ""
-    ).trim();
+    const parsed =
+        String(
+            value ?? ""
+        ).trim();
 
     return parsed || null;
+}
+
+function refreshRequestPaths(
+    requestId: string
+) {
+    revalidatePath(
+        "/dashboard"
+    );
+
+    revalidatePath(
+        "/solicitacoes"
+    );
+
+    revalidatePath(
+        `/solicitacoes/${requestId}`
+    );
+
+    revalidatePath(
+        "/devolucoes"
+    );
+
+    revalidatePath(
+        "/financeiro/solicitacoes"
+    );
+
+    revalidatePath(
+        `/financeiro/solicitacoes/${requestId}`
+    );
+
+    revalidatePath(
+        "/financeiro/devolucoes"
+    );
 }
 
 export async function updateFinanceWorkflow(
     _previousState: FinanceWorkflowState,
     formData: FormData
 ): Promise<FinanceWorkflowState> {
-    const requestId = String(
-        formData.get("request_id") ?? ""
-    ).trim();
+    // ==========================================================
+    // IDENTIFICA A SOLICITAÇÃO E A AÇÃO
+    // ==========================================================
 
-    const status = String(
-        formData.get("status") ?? ""
-    ).trim();
+    const requestId =
+        String(
+            formData.get(
+                "request_id"
+            ) ?? ""
+        ).trim();
+
+    const workflowAction =
+        String(
+            formData.get(
+                "workflow_action"
+            ) ?? ""
+        ).trim() as WorkflowAction;
 
     if (!requestId) {
         return {
@@ -88,24 +127,37 @@ export async function updateFinanceWorkflow(
     }
 
     if (
-        !allowedStatuses.includes(
-            status as (typeof allowedStatuses)[number]
+        ![
+            "approve_release",
+            "request_adjustment",
+            "reject",
+        ].includes(
+            workflowAction
         )
     ) {
         return {
-            error: "Status inválido.",
+            error:
+                "Não foi possível identificar a ação solicitada.",
             success: null,
         };
     }
 
+    // ==========================================================
+    // CAMPOS
+    // ==========================================================
+
     const approvedAmount =
         parseMoney(
-            formData.get("approved_amount")
+            formData.get(
+                "approved_amount"
+            )
         );
 
     const assignedCardId =
         optionalString(
-            formData.get("assigned_card_id")
+            formData.get(
+                "assigned_card_id"
+            )
         );
 
     const expectedReturnDate =
@@ -117,8 +169,14 @@ export async function updateFinanceWorkflow(
 
     const financeNotes =
         optionalString(
-            formData.get("finance_notes")
+            formData.get(
+                "finance_notes"
+            )
         );
+
+    // ==========================================================
+    // AUTENTICAÇÃO
+    // ==========================================================
 
     const supabase =
         await createClient();
@@ -128,7 +186,9 @@ export async function updateFinanceWorkflow(
     } =
         await supabase.auth.getClaims();
 
-    if (!claimsData?.claims?.sub) {
+    if (
+        !claimsData?.claims?.sub
+    ) {
         return {
             error:
                 "Sua sessão expirou. Entre novamente no sistema.",
@@ -136,65 +196,209 @@ export async function updateFinanceWorkflow(
         };
     }
 
-    const { error } =
-        await supabase.rpc(
-            "update_credit_card_request_workflow",
-            {
-                p_request_id:
-                    requestId,
+    // ==========================================================
+    // APROVAR + LIBERAR CARTÃO
+    //
+    // Essa única ação substitui:
+    //
+    // Em análise
+    // Aguardando aprovação
+    // Aprovado
+    // Cartão reservado
+    // Cartão liberado
+    //
+    // Para o usuário tudo acontece em um clique.
+    // ==========================================================
 
-                p_status:
-                    status,
+    if (
+        workflowAction ===
+        "approve_release"
+    ) {
+        if (
+            approvedAmount ===
+            null ||
+            approvedAmount <= 0
+        ) {
+            return {
+                error:
+                    "Informe um valor aprovado maior que zero.",
+                success: null,
+            };
+        }
 
-                p_approved_amount:
-                    approvedAmount,
+        if (!assignedCardId) {
+            return {
+                error:
+                    "Selecione o cartão que será liberado.",
+                success: null,
+            };
+        }
 
-                p_assigned_card_id:
-                    assignedCardId,
+        if (
+            !expectedReturnDate
+        ) {
+            return {
+                error:
+                    "Informe a previsão de devolução do cartão.",
+                success: null,
+            };
+        }
 
-                p_expected_return_date:
-                    expectedReturnDate,
+        const { error } =
+            await supabase.rpc(
+                "finance_approve_and_release_card_v2",
+                {
+                    p_request_id:
+                        requestId,
 
-                p_finance_notes:
-                    financeNotes,
-            }
-        );
+                    p_approved_amount:
+                        approvedAmount,
 
-    if (error) {
-        console.error(
-            "Erro ao atualizar solicitação:",
-            error
+                    p_card_id:
+                        assignedCardId,
+
+                    p_expected_return_date:
+                        expectedReturnDate,
+
+                    p_finance_notes:
+                        financeNotes,
+                }
+            );
+
+        if (error) {
+            console.error(
+                "Erro ao aprovar e liberar cartão:",
+                error
+            );
+
+            return {
+                error:
+                    error.message ||
+                    "Não foi possível aprovar e liberar o cartão.",
+                success: null,
+            };
+        }
+
+        refreshRequestPaths(
+            requestId
         );
 
         return {
-            error:
-                error.message ||
-                "Não foi possível atualizar a solicitação.",
-            success: null,
+            error: null,
+            success:
+                "Solicitação aprovada e cartão liberado com sucesso.",
         };
     }
 
-    revalidatePath("/dashboard");
+    // ==========================================================
+    // SOLICITAR AJUSTE
+    // ==========================================================
 
-    revalidatePath(
-        "/solicitacoes"
-    );
+    if (
+        workflowAction ===
+        "request_adjustment"
+    ) {
+        if (!financeNotes) {
+            return {
+                error:
+                    "Informe nas observações o que precisa ser ajustado pelo solicitante.",
+                success: null,
+            };
+        }
 
-    revalidatePath(
-        `/solicitacoes/${requestId}`
-    );
+        const { error } =
+            await supabase.rpc(
+                "finance_request_card_adjustment_v2",
+                {
+                    p_request_id:
+                        requestId,
 
-    revalidatePath(
-        "/financeiro/solicitacoes"
-    );
+                    p_finance_notes:
+                        financeNotes,
+                }
+            );
 
-    revalidatePath(
-        `/financeiro/solicitacoes/${requestId}`
-    );
+        if (error) {
+            console.error(
+                "Erro ao solicitar ajuste:",
+                error
+            );
+
+            return {
+                error:
+                    error.message ||
+                    "Não foi possível solicitar o ajuste.",
+                success: null,
+            };
+        }
+
+        refreshRequestPaths(
+            requestId
+        );
+
+        return {
+            error: null,
+            success:
+                "Ajuste solicitado ao colaborador.",
+        };
+    }
+
+    // ==========================================================
+    // REPROVAR
+    // ==========================================================
+
+    if (
+        workflowAction ===
+        "reject"
+    ) {
+        if (!financeNotes) {
+            return {
+                error:
+                    "Informe nas observações o motivo da reprovação.",
+                success: null,
+            };
+        }
+
+        const { error } =
+            await supabase.rpc(
+                "finance_reject_card_request_v2",
+                {
+                    p_request_id:
+                        requestId,
+
+                    p_finance_notes:
+                        financeNotes,
+                }
+            );
+
+        if (error) {
+            console.error(
+                "Erro ao reprovar solicitação:",
+                error
+            );
+
+            return {
+                error:
+                    error.message ||
+                    "Não foi possível reprovar a solicitação.",
+                success: null,
+            };
+        }
+
+        refreshRequestPaths(
+            requestId
+        );
+
+        return {
+            error: null,
+            success:
+                "Solicitação reprovada.",
+        };
+    }
 
     return {
-        error: null,
-        success:
-            "Solicitação atualizada com sucesso.",
+        error:
+            "Ação não reconhecida.",
+        success: null,
     };
 }

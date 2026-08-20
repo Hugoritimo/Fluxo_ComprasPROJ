@@ -4,116 +4,166 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 
+export type ReturnDocumentCategory =
+    | "invoice"
+    | "payment_receipt"
+    | "other"
+    | "accountability";
+
 export type UploadedReturnDocument = {
+    category: ReturnDocumentCategory;
     fileName: string;
     storagePath: string;
     mimeType: string;
     fileSize: number;
 };
 
-export type SubmitCardReturnInput = {
-    requestId: string;
-
-    actualAmount: string;
-    purchaseDate: string;
+export type ReturnPurchase = {
     supplierName: string;
-    returnNotes: string;
+    amount: number;
+    purchaseDate: string | null;
+    notes: string | null;
+};
 
-    invoice: UploadedReturnDocument;
-    paymentReceipt: UploadedReturnDocument;
+type SubmitCardReturnInput = {
+    requestId: string;
+    siengeRequestNumber: string;
+    receivedByName: string;
+    returnNotes: string;
+    purchases: ReturnPurchase[];
+    documents: UploadedReturnDocument[];
 };
 
 export type SubmitCardReturnResult = {
-    error: string | null;
     success: boolean;
+    error: string | null;
 };
 
-function parseMoney(
-    value: string
-) {
-    let input =
-        value.trim();
+// ============================================================
+// SUBMETER PRESTAÇÃO DE CONTAS
+// ============================================================
 
-    if (!input) {
-        return null;
+export async function submitCardReturn({
+    requestId,
+    siengeRequestNumber,
+    receivedByName,
+    returnNotes,
+    purchases,
+    documents,
+}: SubmitCardReturnInput): Promise<SubmitCardReturnResult> {
+    // ==========================================================
+    // VALIDAÇÕES
+    // ==========================================================
+
+    if (!requestId) {
+        return {
+            success: false,
+            error:
+                "Não foi possível identificar a solicitação.",
+        };
     }
 
-    input = input
-        .replace(/\s/g, "")
-        .replace(/R\$/gi, "");
+    if (!siengeRequestNumber.trim()) {
+        return {
+            success: false,
+            error:
+                "Informe o número da solicitação no Sienge.",
+        };
+    }
+
+    if (!receivedByName.trim()) {
+        return {
+            success: false,
+            error:
+                "Informe quem recebeu o cartão na devolução.",
+        };
+    }
 
     if (
-        input.includes(".") &&
-        input.includes(",")
+        !Array.isArray(purchases) ||
+        purchases.length === 0
     ) {
-        input = input
-            .replace(/\./g, "")
-            .replace(",", ".");
-    } else if (
-        input.includes(",")
-    ) {
-        input =
-            input.replace(",", ".");
+        return {
+            success: false,
+            error:
+                "Adicione pelo menos uma compra realizada.",
+        };
     }
 
-    const valueNumber =
-        Number(input);
+    for (
+        let index = 0;
+        index < purchases.length;
+        index++
+    ) {
+        const purchase =
+            purchases[index];
 
-    return Number.isFinite(
-        valueNumber
-    )
-        ? valueNumber
-        : null;
-}
+        if (!purchase.supplierName.trim()) {
+            return {
+                success: false,
+                error:
+                    `Informe o fornecedor da compra ${index + 1}.`,
+            };
+        }
 
-export async function submitCardReturn(
-    input: SubmitCardReturnInput
-): Promise<SubmitCardReturnResult> {
-    const actualAmount =
-        parseMoney(
-            input.actualAmount
+        if (
+            !Number.isFinite(
+                purchase.amount
+            ) ||
+            purchase.amount <= 0
+        ) {
+            return {
+                success: false,
+                error:
+                    `Informe um valor válido para a compra ${index + 1}.`,
+            };
+        }
+    }
+
+    if (
+        !Array.isArray(documents) ||
+        documents.length === 0
+    ) {
+        return {
+            success: false,
+            error:
+                "Adicione os documentos da prestação de contas.",
+        };
+    }
+
+    const hasInvoice =
+        documents.some(
+            (document) =>
+                document.category ===
+                "invoice"
         );
 
-    if (
-        !input.requestId
-    ) {
+    const hasReceipt =
+        documents.some(
+            (document) =>
+                document.category ===
+                "payment_receipt"
+        );
+
+    if (!hasInvoice) {
         return {
-            error:
-                "Solicitação inválida.",
             success: false,
+            error:
+                "Anexe pelo menos uma Nota Fiscal ou Cupom Fiscal.",
         };
     }
 
-    if (
-        actualAmount === null ||
-        actualAmount <= 0
-    ) {
+    if (!hasReceipt) {
         return {
-            error:
-                "Informe o valor efetivamente utilizado.",
             success: false,
+            error:
+                "Anexe pelo menos um comprovante da transação.",
         };
     }
 
-    if (
-        !input.purchaseDate
-    ) {
-        return {
-            error:
-                "Informe a data da compra.",
-            success: false,
-        };
-    }
-
-    if (
-        !input.supplierName.trim()
-    ) {
-        return {
-            error:
-                "Informe o fornecedor.",
-            success: false,
-        };
-    }
+    // ==========================================================
+    // AUTENTICAÇÃO
+    // ==========================================================
 
     const supabase =
         await createClient();
@@ -127,76 +177,58 @@ export async function submitCardReturn(
         !claimsData?.claims?.sub
     ) {
         return {
-            error:
-                "Sua sessão expirou. Entre novamente.",
             success: false,
+            error:
+                "Sua sessão expirou. Entre novamente no sistema.",
         };
     }
 
-    const {
-        error,
-    } = await supabase.rpc(
-        "submit_card_return",
-        {
-            p_request_id:
-                input.requestId,
+    // ==========================================================
+    // RPC V3
+    // ==========================================================
 
-            p_actual_amount:
-                actualAmount,
+    const { error } =
+        await supabase.rpc(
+            "submit_card_return_v3",
+            {
+                p_request_id:
+                    requestId,
 
-            p_purchase_date:
-                input.purchaseDate,
+                p_sienge_request_number:
+                    siengeRequestNumber.trim(),
 
-            p_supplier_name:
-                input.supplierName.trim(),
+                p_received_by_name:
+                    receivedByName.trim(),
 
-            p_return_notes:
-                input.returnNotes.trim()
-                || null,
+                p_return_notes:
+                    returnNotes.trim() ||
+                    null,
 
-            p_invoice_file_name:
-                input.invoice.fileName,
+                p_purchases:
+                    purchases,
 
-            p_invoice_storage_path:
-                input.invoice.storagePath,
-
-            p_invoice_mime_type:
-                input.invoice.mimeType,
-
-            p_invoice_file_size:
-                input.invoice.fileSize,
-
-            p_receipt_file_name:
-                input.paymentReceipt
-                    .fileName,
-
-            p_receipt_storage_path:
-                input.paymentReceipt
-                    .storagePath,
-
-            p_receipt_mime_type:
-                input.paymentReceipt
-                    .mimeType,
-
-            p_receipt_file_size:
-                input.paymentReceipt
-                    .fileSize,
-        }
-    );
+                p_documents:
+                    documents,
+            }
+        );
 
     if (error) {
         console.error(
-            "Erro ao registrar devolução:",
+            "Erro ao registrar prestação de contas:",
             error
         );
 
         return {
+            success: false,
             error:
                 error.message ||
-                "Não foi possível registrar a devolução.",
-            success: false,
+                "Não foi possível registrar a prestação de contas.",
         };
     }
+
+    // ==========================================================
+    // CACHE
+    // ==========================================================
 
     revalidatePath(
         "/dashboard"
@@ -207,11 +239,15 @@ export async function submitCardReturn(
     );
 
     revalidatePath(
-        `/solicitacoes/${input.requestId}`
+        `/solicitacoes/${requestId}`
     );
 
     revalidatePath(
-        `/solicitacoes/${input.requestId}/devolucao`
+        "/devolucoes"
+    );
+
+    revalidatePath(
+        `/solicitacoes/${requestId}/devolucao`
     );
 
     revalidatePath(
@@ -219,15 +255,19 @@ export async function submitCardReturn(
     );
 
     revalidatePath(
-        `/financeiro/solicitacoes/${input.requestId}`
+        `/financeiro/solicitacoes/${requestId}`
     );
 
     revalidatePath(
         "/financeiro/devolucoes"
     );
 
+    revalidatePath(
+        `/financeiro/devolucoes/${requestId}`
+    );
+
     return {
-        error: null,
         success: true,
+        error: null,
     };
 }

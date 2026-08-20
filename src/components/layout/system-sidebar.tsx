@@ -9,8 +9,10 @@ import {
 import {
   CreditCard,
   FileCheck2,
+  FileSpreadsheet,
   LayoutDashboard,
   LogOut,
+  PackageSearch,
   RotateCcw,
   Send,
   UsersRound,
@@ -124,6 +126,21 @@ export default function SystemSidebar({
       "/devolucoes" ||
     isReturnForm;
 
+  // =========================================================
+  // MEUS PEDIDOS - SIENGE
+  // =========================================================
+
+  const isMyOrders =
+    pathname ===
+      "/meus-pedidos" ||
+    pathname.startsWith(
+      "/meus-pedidos/"
+    );
+
+  // =========================================================
+  // FINANCEIRO
+  // =========================================================
+
   const isFinanceRequests =
     pathname.startsWith(
       "/financeiro/solicitacoes"
@@ -139,6 +156,17 @@ export default function SystemSidebar({
       "/financeiro/devolucoes"
     );
 
+  const isFinanceSienge =
+    pathname ===
+      "/financeiro/sienge" ||
+    pathname.startsWith(
+      "/financeiro/sienge/"
+    );
+
+  // =========================================================
+  // ADMIN
+  // =========================================================
+
   const isAdminUsers =
     pathname.startsWith(
       "/administracao/usuarios"
@@ -146,17 +174,27 @@ export default function SystemSidebar({
 
   // =========================================================
   // MOBILE GRID
+  //
+  // Todos:
+  // Dashboard
+  // Solicitar
+  // Solicitações
+  // Devoluções
+  // Pedidos
+  //
+  // + Financeiro
+  // + Admin
   // =========================================================
 
   const mobileColumns =
     canFinance &&
     canAdmin
-      ? "grid-cols-6"
+      ? "grid-cols-7"
       : (
           canFinance ||
           canAdmin
-            ? "grid-cols-5"
-            : "grid-cols-4"
+            ? "grid-cols-6"
+            : "grid-cols-5"
         );
 
   return (
@@ -184,10 +222,14 @@ export default function SystemSidebar({
           </div>
         </div>
 
-        {/* MENU */}
+        {/* ===================================================
+            MENU
+        ==================================================== */}
 
         <nav className="flex-1 overflow-y-auto p-4">
-          {/* SOLICITAÇÕES */}
+          {/* =================================================
+              SOLICITAÇÕES
+          ================================================== */}
 
           <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
             Solicitações
@@ -247,7 +289,34 @@ export default function SystemSidebar({
             </Link>
           </div>
 
-          {/* FINANCEIRO */}
+          {/* =================================================
+              COMPRAS / SIENGE
+          ================================================== */}
+
+          <div className="my-5 border-t border-white/[0.07]" />
+
+          <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
+            Compras
+          </p>
+
+          <div className="space-y-1">
+            <Link
+              href="/meus-pedidos"
+              className={linkClasses(
+                isMyOrders
+              )}
+            >
+              <PackageSearch
+                size={18}
+              />
+
+              Meus Pedidos
+            </Link>
+          </div>
+
+          {/* =================================================
+              FINANCEIRO
+          ================================================== */}
 
           {canFinance && (
             <>
@@ -258,6 +327,8 @@ export default function SystemSidebar({
               </p>
 
               <div className="space-y-1">
+                {/* GERENCIAR SOLICITAÇÕES */}
+
                 <Link
                   href="/financeiro/solicitacoes"
                   className={linkClasses(
@@ -270,6 +341,8 @@ export default function SystemSidebar({
 
                   Gerenciar Solicitações
                 </Link>
+
+                {/* CARTÕES */}
 
                 <Link
                   href="/financeiro/cartoes"
@@ -284,6 +357,8 @@ export default function SystemSidebar({
                   Cartões Corporativos
                 </Link>
 
+                {/* DEVOLUÇÕES */}
+
                 <Link
                   href="/financeiro/devolucoes"
                   className={linkClasses(
@@ -296,11 +371,28 @@ export default function SystemSidebar({
 
                   Conferir Devoluções
                 </Link>
+
+                {/* SIENGE */}
+
+                <Link
+                  href="/financeiro/sienge"
+                  className={linkClasses(
+                    isFinanceSienge
+                  )}
+                >
+                  <FileSpreadsheet
+                    size={18}
+                  />
+
+                  Acompanhamento Sienge
+                </Link>
               </div>
             </>
           )}
 
-          {/* ADMINISTRAÇÃO */}
+          {/* =================================================
+              ADMINISTRAÇÃO
+          ================================================== */}
 
           {canAdmin && (
             <>
@@ -328,7 +420,9 @@ export default function SystemSidebar({
           )}
         </nav>
 
-        {/* USUÁRIO */}
+        {/* ===================================================
+            USUÁRIO
+        ==================================================== */}
 
         <div className="border-t border-white/[0.07] p-4">
           <div className="mb-3 px-2">
@@ -372,6 +466,8 @@ export default function SystemSidebar({
           mobileColumns,
         ].join(" ")}
       >
+        {/* DASHBOARD */}
+
         <Link
           href="/dashboard"
           className={mobileLinkClasses(
@@ -384,6 +480,8 @@ export default function SystemSidebar({
 
           Dashboard
         </Link>
+
+        {/* SOLICITAR */}
 
         <Link
           href="/solicitacoes/nova"
@@ -398,6 +496,8 @@ export default function SystemSidebar({
           Solicitar
         </Link>
 
+        {/* SOLICITAÇÕES */}
+
         <Link
           href="/solicitacoes"
           className={mobileLinkClasses(
@@ -411,6 +511,8 @@ export default function SystemSidebar({
           Solicitações
         </Link>
 
+        {/* DEVOLUÇÕES */}
+
         <Link
           href="/devolucoes"
           className={mobileLinkClasses(
@@ -423,6 +525,23 @@ export default function SystemSidebar({
 
           Devoluções
         </Link>
+
+        {/* MEUS PEDIDOS */}
+
+        <Link
+          href="/meus-pedidos"
+          className={mobileLinkClasses(
+            isMyOrders
+          )}
+        >
+          <PackageSearch
+            size={18}
+          />
+
+          Pedidos
+        </Link>
+
+        {/* FINANCEIRO */}
 
         {canFinance && (
           <Link
@@ -440,6 +559,8 @@ export default function SystemSidebar({
             Financeiro
           </Link>
         )}
+
+        {/* ADMIN */}
 
         {canAdmin && (
           <Link

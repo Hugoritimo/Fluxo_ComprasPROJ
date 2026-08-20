@@ -16,6 +16,8 @@ import {
 import CardRequestStatus from "@/components/cards/card-request-status";
 import { createClient } from "@/lib/supabase/server";
 
+import ExportCardRequestsButton from "./export-card-requests-button";
+
 type PageProps = {
   searchParams: Promise<{
     status?: string;
@@ -371,25 +373,37 @@ export default async function FinanceRequestsPage({
 
   return (
     <div className="mx-auto max-w-[1600px]">
-      {/* CABEÇALHO */}
+      {/* =====================================================
+          CABEÇALHO
+      ====================================================== */}
 
-      <div className="mb-8">
-        <p className="text-sm font-semibold text-[#AF1B1B]">
-          Financeiro
-        </p>
+      <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[#AF1B1B]">
+            Financeiro
+          </p>
 
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-          Gerenciar Solicitações
-        </h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
+            Gerenciar Solicitações
+          </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          Analise e acompanhe as
-          solicitações de cartão de crédito
-          recebidas.
-        </p>
+          <p className="mt-2 text-sm text-slate-500">
+            Analise e acompanhe as
+            solicitações de cartão de crédito
+            recebidas.
+          </p>
+        </div>
+
+        {/* EXPORTAÇÃO */}
+
+        <div className="shrink-0">
+          <ExportCardRequestsButton />
+        </div>
       </div>
 
-      {/* INDICADORES */}
+      {/* =====================================================
+          INDICADORES
+      ====================================================== */}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
@@ -433,10 +447,14 @@ export default async function FinanceRequestsPage({
         />
       </div>
 
-      {/* LISTAGEM */}
+      {/* =====================================================
+          LISTAGEM
+      ====================================================== */}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* FILTROS */}
+        {/* ===================================================
+            FILTROS
+        ==================================================== */}
 
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <form
@@ -483,7 +501,9 @@ export default async function FinanceRequestsPage({
           </form>
         </div>
 
-        {/* QUANTIDADE */}
+        {/* ===================================================
+            QUANTIDADE
+        ==================================================== */}
 
         <div className="border-b border-slate-100 px-6 py-4">
           <p className="text-xs text-slate-500">
@@ -499,7 +519,9 @@ export default async function FinanceRequestsPage({
           </p>
         </div>
 
-        {/* VAZIO */}
+        {/* ===================================================
+            VAZIO
+        ==================================================== */}
 
         {requests.length ===
         0 ? (
@@ -521,6 +543,10 @@ export default async function FinanceRequestsPage({
             </p>
           </div>
         ) : (
+          /* =================================================
+             SOLICITAÇÕES
+          ================================================== */
+
           <div className="divide-y divide-slate-100">
             {requests.map(
               (request) => {
@@ -536,7 +562,9 @@ export default async function FinanceRequestsPage({
                     className="group block px-6 py-5 transition hover:bg-slate-50/70"
                   >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-                      {/* PRINCIPAL */}
+                      {/* =====================================
+                          PRINCIPAL
+                      ====================================== */}
 
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -582,7 +610,9 @@ export default async function FinanceRequestsPage({
                         </div>
                       </div>
 
-                      {/* VALOR */}
+                      {/* =====================================
+                          VALOR
+                      ====================================== */}
 
                       <div className="flex items-center justify-between gap-6 xl:justify-end">
                         <div className="xl:text-right">

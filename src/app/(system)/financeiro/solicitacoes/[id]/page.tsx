@@ -1,6 +1,9 @@
-import type { ElementType } from "react";
+import type {
+  ElementType,
+} from "react";
 
 import Link from "next/link";
+
 import {
   notFound,
   redirect,
@@ -23,7 +26,11 @@ import CardRequestStatus, {
   getCardRequestStatusLabel,
 } from "@/components/cards/card-request-status";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+import CopyReturnLinkButton from "./copy-return-link-button";
 
 import WorkflowForm from "./workflow-form";
 
@@ -33,16 +40,43 @@ type PageProps = {
   }>;
 };
 
+// ============================================================
+// STATUS QUE JÁ POSSUEM LINK DE DEVOLUÇÃO
+// ============================================================
+
+const returnLinkStatuses = [
+  "card_delivered",
+  "in_use",
+  "awaiting_return",
+  "returned",
+  "accountability_review",
+  "completed",
+];
+
+// ============================================================
+// FORMATADORES
+// ============================================================
+
 function formatCurrency(
-  value: number | string | null
+  value:
+    | number
+    | string
+    | null
 ) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(value ?? 0));
+  return new Intl.NumberFormat(
+    "pt-BR",
+    {
+      style: "currency",
+      currency: "BRL",
+    }
+  ).format(
+    Number(value ?? 0)
+  );
 }
 
-function formatDate(value: string | null) {
+function formatDate(
+  value: string | null
+) {
   if (!value) {
     return "-";
   }
@@ -50,7 +84,9 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat(
     "pt-BR"
   ).format(
-    new Date(`${value}T12:00:00`)
+    new Date(
+      `${value}T12:00:00`
+    )
   );
 }
 
@@ -64,17 +100,30 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
-      dateStyle: "short",
-      timeStyle: "short",
+      dateStyle:
+        "short",
+
+      timeStyle:
+        "short",
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }
 
 function reasonLabel(
-  reason: string | null,
-  other: string | null
+  reason:
+    | string
+    | null,
+
+  other:
+    | string
+    | null
 ) {
-  if (reason === "emergency") {
+  if (
+    reason ===
+    "emergency"
+  ) {
     return "Emergencial";
   }
 
@@ -85,7 +134,10 @@ function reasonLabel(
     return "Sem fornecedor cadastrado";
   }
 
-  if (reason === "other") {
+  if (
+    reason ===
+    "other"
+  ) {
     return other
       ? `Outro: ${other}`
       : "Outro";
@@ -94,10 +146,16 @@ function reasonLabel(
   return "-";
 }
 
+// ============================================================
+// PAGE
+// ============================================================
+
 export default async function FinanceRequestDetailsPage({
   params,
 }: PageProps) {
-  const { id } = await params;
+  const {
+    id,
+  } = await params;
 
   const supabase =
     await createClient();
@@ -106,37 +164,61 @@ export default async function FinanceRequestDetailsPage({
   // USUÁRIO LOGADO
   // =========================================================
 
-  const { data: claimsData } =
+  const {
+    data: claimsData,
+  } =
     await supabase.auth.getClaims();
 
   const userId =
     claimsData?.claims?.sub;
 
   if (!userId) {
-    redirect("/login");
+    redirect(
+      "/login"
+    );
   }
 
   // =========================================================
   // VERIFICA PERMISSÃO FINANCEIRA
   // =========================================================
 
-  const { data: roleRows } =
+  const {
+    data: roleRows,
+  } =
     await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId);
+      .from(
+        "user_roles"
+      )
+      .select(
+        "role"
+      )
+      .eq(
+        "user_id",
+        userId
+      );
 
   const roles = (
     roleRows ?? []
-  ).map((item) => item.role);
+  ).map(
+    (item) =>
+      item.role
+  );
 
   const canAccess =
-    roles.includes("finance") ||
-    roles.includes("admin") ||
-    roles.includes("superadmin");
+    roles.includes(
+      "finance"
+    ) ||
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
 
   if (!canAccess) {
-    redirect("/dashboard");
+    redirect(
+      "/dashboard"
+    );
   }
 
   // =========================================================
@@ -146,52 +228,67 @@ export default async function FinanceRequestDetailsPage({
   const {
     data: request,
     error,
-  } = await supabase
-    .from("card_requests")
-    .select(
-      `
-      id,
-      request_number,
-      requester_id,
+  } =
+    await supabase
+      .from(
+        "card_requests"
+      )
+      .select(
+        `
+        id,
+        request_number,
+        requester_id,
 
-      request_date,
-      requester_email_snapshot,
+        request_date,
+        requester_email_snapshot,
 
-      sienge_request_number,
-      cost_center_or_site,
-      suppliers_text,
+        sienge_request_number,
+        cost_center_or_site,
+        suppliers_text,
 
-      estimated_amount,
-      approved_amount,
+        estimated_amount,
+        approved_amount,
 
-      purchase_reason,
-      purchase_reason_other,
+        purchase_reason,
+        purchase_reason_other,
 
-      purpose,
-      justification,
+        purpose,
+        justification,
 
-      status,
+        status,
 
-      assigned_card_id,
-      expected_return_date,
+        assigned_card_id,
+        expected_return_date,
 
-      finance_notes,
+        finance_notes,
 
-      submitted_at,
-      approved_at,
-      delivered_at,
-      returned_at,
-      completed_at,
+        external_return_token,
+        external_return_enabled,
 
-      created_at,
-      updated_at
-      `
-    )
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
+        submitted_at,
+        approved_at,
+        delivered_at,
+        returned_at,
+        completed_at,
 
-  if (error || !request) {
+        created_at,
+        updated_at
+        `
+      )
+      .eq(
+        "id",
+        id
+      )
+      .is(
+        "deleted_at",
+        null
+      )
+      .single();
+
+  if (
+    error ||
+    !request
+  ) {
     console.error(
       "Erro ao carregar solicitação:",
       error
@@ -208,69 +305,96 @@ export default async function FinanceRequestDetailsPage({
     profileResult,
     historyResult,
     cardsResult,
-  ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select(
-        `
-        id,
-        full_name,
-        email,
-        job_title
-        `
-      )
-      .eq(
-        "id",
-        request.requester_id
-      )
-      .single(),
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "profiles"
+        )
+        .select(
+          `
+          id,
+          full_name,
+          email,
+          job_title
+          `
+        )
+        .eq(
+          "id",
+          request.requester_id
+        )
+        .single(),
 
-    supabase
-      .from(
-        "card_request_status_history"
-      )
-      .select(
-        `
-        id,
-        previous_status,
-        new_status,
-        notes,
-        created_at
-        `
-      )
-      .eq(
-        "card_request_id",
-        request.id
-      )
-      .order("created_at", {
-        ascending: true,
-      }),
+      supabase
+        .from(
+          "card_request_status_history"
+        )
+        .select(
+          `
+          id,
+          previous_status,
+          new_status,
+          notes,
+          created_at
+          `
+        )
+        .eq(
+          "card_request_id",
+          request.id
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        ),
 
-    supabase
-      .from("credit_cards")
-      .select(
-        `
-        id,
-        name,
-        bank_name,
-        last_four_digits,
-        status,
-        active
-        `
-      )
-      .order("name", {
-        ascending: true,
-      }),
-  ]);
+      supabase
+        .from(
+          "credit_cards"
+        )
+        .select(
+          `
+          id,
+          name,
+          bank_name,
+          last_four_digits,
+          status,
+          active
+          `
+        )
+        .order(
+          "name",
+          {
+            ascending:
+              true,
+          }
+        ),
+    ]);
 
   const requester =
     profileResult.data;
 
   const history =
-    historyResult.data ?? [];
+    historyResult.data ??
+    [];
 
   const cards =
-    cardsResult.data ?? [];
+    cardsResult.data ??
+    [];
+
+  // =========================================================
+  // LINK EXTERNO DE DEVOLUÇÃO
+  // =========================================================
+
+  const canShowReturnLink =
+    returnLinkStatuses.includes(
+      request.status
+    ) &&
+    Boolean(
+      request.external_return_token
+    );
 
   // =========================================================
   // PÁGINA
@@ -284,9 +408,12 @@ export default async function FinanceRequestDetailsPage({
         href="/financeiro/solicitacoes"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#AF1B1B]"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft
+          size={16}
+        />
 
-        Voltar para solicitações
+        Voltar para
+        solicitações
       </Link>
 
       {/* =====================================================
@@ -297,22 +424,28 @@ export default async function FinanceRequestDetailsPage({
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-bold text-[#AF1B1B]">
-              {request.request_number}
+              {
+                request.request_number
+              }
             </span>
 
             <CardRequestStatus
-              status={request.status}
+              status={
+                request.status
+              }
             />
           </div>
 
           <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
-            Análise da Solicitação
+            Análise da
+            Solicitação
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
             Pedido Sienge{" "}
             <strong className="text-slate-700">
-              {request.sienge_request_number}
+              {request.sienge_request_number ??
+                "Ainda não informado"}
             </strong>
           </p>
         </div>
@@ -377,7 +510,9 @@ export default async function FinanceRequestDetailsPage({
             />
 
             <InfoCard
-              icon={Building2}
+              icon={
+                Building2
+              }
               label="Centro de custo / Obra"
               value={
                 request.cost_center_or_site ??
@@ -386,7 +521,9 @@ export default async function FinanceRequestDetailsPage({
             />
 
             <InfoCard
-              icon={CalendarDays}
+              icon={
+                CalendarDays
+              }
               label="Solicitado em"
               value={formatDate(
                 request.request_date
@@ -405,8 +542,8 @@ export default async function FinanceRequestDetailsPage({
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Informações fornecidas pelo
-                solicitante.
+                Informações fornecidas
+                pelo solicitante.
               </p>
             </div>
 
@@ -449,7 +586,9 @@ export default async function FinanceRequestDetailsPage({
               />
 
               <DataField
-                icon={CircleDollarSign}
+                icon={
+                  CircleDollarSign
+                }
                 label="Valor previsto"
                 value={formatCurrency(
                   request.estimated_amount
@@ -457,14 +596,18 @@ export default async function FinanceRequestDetailsPage({
               />
 
               <DataField
-                icon={CreditCard}
+                icon={
+                  CreditCard
+                }
                 label="Forma de pagamento"
                 value="Cartão de crédito"
               />
 
               <div className="md:col-span-2">
                 <DataField
-                  icon={FileText}
+                  icon={
+                    FileText
+                  }
                   label="Motivo da compra"
                   value={reasonLabel(
                     request.purchase_reason,
@@ -482,28 +625,35 @@ export default async function FinanceRequestDetailsPage({
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="font-semibold text-slate-950">
-                Finalidade da compra
+                Finalidade da
+                compra
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Onde será utilizado e qual
-                necessidade será atendida.
+                Onde será utilizado
+                e qual necessidade
+                será atendida.
               </p>
             </div>
 
             <div className="p-6">
               <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                {request.purpose}
+                {
+                  request.purpose
+                }
               </p>
 
               {request.justification && (
                 <div className="mt-6 border-t border-slate-100 pt-5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    Observações adicionais
+                    Observações
+                    adicionais
                   </p>
 
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                    {request.justification}
+                    {
+                      request.justification
+                    }
                   </p>
                 </div>
               )}
@@ -517,32 +667,42 @@ export default async function FinanceRequestDetailsPage({
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="font-semibold text-slate-950">
-                Histórico da solicitação
+                Histórico da
+                solicitação
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Todas as mudanças de status
-                realizadas no processo.
+                Todas as mudanças de
+                status realizadas no
+                processo.
               </p>
             </div>
 
             <div className="p-6">
-              {history.length === 0 ? (
+              {history.length ===
+              0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">
-                  Nenhuma movimentação
+                  Nenhuma
+                  movimentação
                   registrada.
                 </p>
               ) : (
                 <div>
                   {history.map(
-                    (entry, index) => {
+                    (
+                      entry,
+                      index
+                    ) => {
                       const isLast =
                         index ===
-                        history.length - 1;
+                        history.length -
+                          1;
 
                       return (
                         <div
-                          key={entry.id}
+                          key={
+                            entry.id
+                          }
                           className="relative flex gap-4 pb-8 last:pb-0"
                         >
                           {!isLast && (
@@ -566,7 +726,9 @@ export default async function FinanceRequestDetailsPage({
 
                             {entry.notes && (
                               <p className="mt-2 text-xs leading-5 text-slate-500">
-                                {entry.notes}
+                                {
+                                  entry.notes
+                                }
                               </p>
                             )}
                           </div>
@@ -585,49 +747,73 @@ export default async function FinanceRequestDetailsPage({
         ==================================================== */}
 
         <aside>
-          <section className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-[#AF1B1B]">
-                Gestão Financeira
-              </p>
+          <div className="sticky top-24 space-y-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-6">
+                <p className="text-xs font-semibold text-[#AF1B1B]">
+                  Gestão Financeira
+                </p>
 
-              <h2 className="mt-1 text-lg font-semibold text-slate-950">
-                Atualizar andamento
-              </h2>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                  Atualizar
+                  andamento
+                </h2>
 
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                As alterações feitas aqui
-                aparecerão para o solicitante
-                no Dashboard e na timeline.
-              </p>
-            </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  As alterações
+                  feitas aqui
+                  aparecerão para
+                  o solicitante no
+                  Dashboard e na
+                  timeline.
+                </p>
+              </div>
 
-            <WorkflowForm
-              request={{
-                id:
-                  request.id,
+              <WorkflowForm
+                request={{
+                  id:
+                    request.id,
 
-                status:
-                  request.status,
+                  status:
+                    request.status,
 
-                estimated_amount:
-                  request.estimated_amount,
+                  estimated_amount:
+                    request.estimated_amount,
 
-                approved_amount:
-                  request.approved_amount,
+                  approved_amount:
+                    request.approved_amount,
 
-                assigned_card_id:
-                  request.assigned_card_id,
+                  assigned_card_id:
+                    request.assigned_card_id,
 
-                expected_return_date:
-                  request.expected_return_date,
+                  expected_return_date:
+                    request.expected_return_date,
 
-                finance_notes:
-                  request.finance_notes,
-              }}
-              cards={cards}
-            />
-          </section>
+                  finance_notes:
+                    request.finance_notes,
+                }}
+                cards={
+                  cards
+                }
+              />
+            </section>
+
+            {/* ===============================================
+                LINK EXTERNO DE DEVOLUÇÃO
+            ================================================ */}
+
+            {canShowReturnLink &&
+              request.external_return_token && (
+                <CopyReturnLinkButton
+                  token={
+                    request.external_return_token
+                  }
+                  enabled={
+                    request.external_return_enabled
+                  }
+                />
+              )}
+          </div>
         </aside>
       </div>
     </div>
@@ -681,7 +867,9 @@ function DataField({
   return (
     <div className="flex gap-3">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-        <Icon size={16} />
+        <Icon
+          size={16}
+        />
       </div>
 
       <div className="min-w-0">
