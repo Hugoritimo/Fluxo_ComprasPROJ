@@ -63,32 +63,6 @@ export default function SystemSidebar({
     );
 
   // =========================================================
-  // CLASSES
-  // =========================================================
-
-  function linkClasses(
-    active: boolean
-  ) {
-    return [
-      "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition",
-      active
-        ? "bg-[#AF1B1B] text-white"
-        : "text-white/55 hover:bg-white/[0.06] hover:text-white",
-    ].join(" ");
-  }
-
-  function mobileLinkClasses(
-    active: boolean
-  ) {
-    return [
-      "flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] transition",
-      active
-        ? "text-[#AF1B1B]"
-        : "text-slate-400",
-    ].join(" ");
-  }
-
-  // =========================================================
   // ROTAS
   // =========================================================
 
@@ -127,7 +101,7 @@ export default function SystemSidebar({
     isReturnForm;
 
   // =========================================================
-  // MEUS PEDIDOS - SIENGE
+  // MEUS PEDIDOS
   // =========================================================
 
   const isMyOrders =
@@ -173,29 +147,27 @@ export default function SystemSidebar({
     );
 
   // =========================================================
-  // MOBILE GRID
-  //
-  // Todos:
-  // Dashboard
-  // Solicitar
-  // Solicitações
-  // Devoluções
-  // Pedidos
-  //
-  // + Financeiro
-  // + Admin
+  // HELPERS
   // =========================================================
 
-  const mobileColumns =
-    canFinance &&
-    canAdmin
-      ? "grid-cols-7"
-      : (
-          canFinance ||
-          canAdmin
-            ? "grid-cols-6"
-            : "grid-cols-5"
-        );
+  function desktopLinkClass(
+    active: boolean
+  ) {
+    return [
+      "gap-3",
+      active
+        ? "bg-primary text-primary-content font-semibold hover:bg-primary"
+        : "",
+    ].join(" ");
+  }
+
+  function mobileLinkClass(
+    active: boolean
+  ) {
+    return active
+      ? "dock-active text-primary"
+      : "";
+  }
 
   return (
     <>
@@ -203,11 +175,13 @@ export default function SystemSidebar({
           DESKTOP
       ====================================================== */}
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-[#171717] text-white lg:flex">
-        {/* LOGO */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-neutral text-neutral-content lg:flex">
+        {/* ===================================================
+            LOGO
+        ==================================================== */}
 
-        <div className="flex h-20 items-center gap-3 border-b border-white/[0.07] px-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#AF1B1B] font-bold">
+        <div className="flex h-20 items-center gap-3 border-b border-neutral-content/10 px-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-box bg-primary text-lg font-bold text-primary-content">
             P
           </div>
 
@@ -216,103 +190,115 @@ export default function SystemSidebar({
               PROJETA
             </p>
 
-            <p className="text-[9px] uppercase tracking-[0.22em] text-white/40">
+            <p className="text-[10px] uppercase tracking-[0.2em] opacity-40">
               Compras
             </p>
           </div>
         </div>
 
         {/* ===================================================
-            MENU
+            NAVEGAÇÃO
         ==================================================== */}
 
-        <nav className="flex-1 overflow-y-auto p-4">
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
           {/* =================================================
               SOLICITAÇÕES
           ================================================== */}
 
-          <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
-            Solicitações
-          </p>
+          <ul className="menu w-full gap-1">
+            <li className="menu-title text-neutral-content/35">
+              Solicitações
+            </li>
 
-          <div className="space-y-1">
-            <Link
-              href="/dashboard"
-              className={linkClasses(
-                isDashboard
-              )}
-            >
-              <LayoutDashboard
-                size={18}
-              />
+            <li>
+              <Link
+                href="/dashboard"
+                className={desktopLinkClass(
+                  isDashboard
+                )}
+              >
+                <LayoutDashboard
+                  size={18}
+                />
 
-              Dashboard
-            </Link>
+                Dashboard
+              </Link>
+            </li>
 
-            <Link
-              href="/solicitacoes/nova"
-              className={linkClasses(
-                isNewRequest
-              )}
-            >
-              <Send
-                size={18}
-              />
+            <li>
+              <Link
+                href="/solicitacoes/nova"
+                className={desktopLinkClass(
+                  isNewRequest
+                )}
+              >
+                <Send
+                  size={18}
+                />
 
-              Solicitar Cartão
-            </Link>
+                Solicitar Cartão
+              </Link>
+            </li>
 
-            <Link
-              href="/solicitacoes"
-              className={linkClasses(
-                isMyRequests
-              )}
-            >
-              <CreditCard
-                size={18}
-              />
+            <li>
+              <Link
+                href="/solicitacoes"
+                className={desktopLinkClass(
+                  isMyRequests
+                )}
+              >
+                <CreditCard
+                  size={18}
+                />
 
-              Minhas Solicitações
-            </Link>
+                Minhas Solicitações
+              </Link>
+            </li>
 
-            <Link
-              href="/devolucoes"
-              className={linkClasses(
-                isReturns
-              )}
-            >
-              <RotateCcw
-                size={18}
-              />
+            <li>
+              <Link
+                href="/devolucoes"
+                className={desktopLinkClass(
+                  isReturns
+                )}
+              >
+                <RotateCcw
+                  size={18}
+                />
 
-              Devoluções
-            </Link>
-          </div>
+                Devoluções
+              </Link>
+            </li>
+          </ul>
+
+          {/* DIVISOR */}
+
+          <div className="divider my-3 opacity-20" />
 
           {/* =================================================
-              COMPRAS / SIENGE
+              COMPRAS
           ================================================== */}
 
-          <div className="my-5 border-t border-white/[0.07]" />
+          <ul className="menu w-full gap-1">
+            <li className="menu-title text-neutral-content/35">
+              Compras
+            </li>
 
-          <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
-            Compras
-          </p>
+            <li>
+              <Link
+                href="/meus-pedidos"
+                className={desktopLinkClass(
+                  isMyOrders
+                )}
+              >
+                <PackageSearch
+                  size={18}
+                />
 
-          <div className="space-y-1">
-            <Link
-              href="/meus-pedidos"
-              className={linkClasses(
-                isMyOrders
-              )}
-            >
-              <PackageSearch
-                size={18}
-              />
-
-              Meus Pedidos
-            </Link>
-          </div>
+                Meus Pedidos
+              </Link>
+            </li>
+          </ul>
 
           {/* =================================================
               FINANCEIRO
@@ -320,73 +306,73 @@ export default function SystemSidebar({
 
           {canFinance && (
             <>
-              <div className="my-5 border-t border-white/[0.07]" />
+              <div className="divider my-3 opacity-20" />
 
-              <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
-                Financeiro
-              </p>
+              <ul className="menu w-full gap-1">
+                <li className="menu-title text-neutral-content/35">
+                  Financeiro
+                </li>
 
-              <div className="space-y-1">
-                {/* GERENCIAR SOLICITAÇÕES */}
+                <li>
+                  <Link
+                    href="/financeiro/solicitacoes"
+                    className={desktopLinkClass(
+                      isFinanceRequests
+                    )}
+                  >
+                    <WalletCards
+                      size={18}
+                    />
 
-                <Link
-                  href="/financeiro/solicitacoes"
-                  className={linkClasses(
-                    isFinanceRequests
-                  )}
-                >
-                  <WalletCards
-                    size={18}
-                  />
+                    Gerenciar Solicitações
+                  </Link>
+                </li>
 
-                  Gerenciar Solicitações
-                </Link>
+                <li>
+                  <Link
+                    href="/financeiro/cartoes"
+                    className={desktopLinkClass(
+                      isFinanceCards
+                    )}
+                  >
+                    <CreditCard
+                      size={18}
+                    />
 
-                {/* CARTÕES */}
+                    Cartões Corporativos
+                  </Link>
+                </li>
 
-                <Link
-                  href="/financeiro/cartoes"
-                  className={linkClasses(
-                    isFinanceCards
-                  )}
-                >
-                  <CreditCard
-                    size={18}
-                  />
+                <li>
+                  <Link
+                    href="/financeiro/devolucoes"
+                    className={desktopLinkClass(
+                      isFinanceReturns
+                    )}
+                  >
+                    <FileCheck2
+                      size={18}
+                    />
 
-                  Cartões Corporativos
-                </Link>
+                    Conferir Devoluções
+                  </Link>
+                </li>
 
-                {/* DEVOLUÇÕES */}
+                <li>
+                  <Link
+                    href="/financeiro/sienge"
+                    className={desktopLinkClass(
+                      isFinanceSienge
+                    )}
+                  >
+                    <FileSpreadsheet
+                      size={18}
+                    />
 
-                <Link
-                  href="/financeiro/devolucoes"
-                  className={linkClasses(
-                    isFinanceReturns
-                  )}
-                >
-                  <FileCheck2
-                    size={18}
-                  />
-
-                  Conferir Devoluções
-                </Link>
-
-                {/* SIENGE */}
-
-                <Link
-                  href="/financeiro/sienge"
-                  className={linkClasses(
-                    isFinanceSienge
-                  )}
-                >
-                  <FileSpreadsheet
-                    size={18}
-                  />
-
-                  Acompanhamento Sienge
-                </Link>
-              </div>
+                    Acompanhamento Sienge
+                  </Link>
+                </li>
+              </ul>
             </>
           )}
 
@@ -396,26 +382,28 @@ export default function SystemSidebar({
 
           {canAdmin && (
             <>
-              <div className="my-5 border-t border-white/[0.07]" />
+              <div className="divider my-3 opacity-20" />
 
-              <p className="mb-2 px-4 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/25">
-                Administração
-              </p>
+              <ul className="menu w-full gap-1">
+                <li className="menu-title text-neutral-content/35">
+                  Administração
+                </li>
 
-              <div className="space-y-1">
-                <Link
-                  href="/administracao/usuarios"
-                  className={linkClasses(
-                    isAdminUsers
-                  )}
-                >
-                  <UsersRound
-                    size={18}
-                  />
+                <li>
+                  <Link
+                    href="/administracao/usuarios"
+                    className={desktopLinkClass(
+                      isAdminUsers
+                    )}
+                  >
+                    <UsersRound
+                      size={18}
+                    />
 
-                  Usuários e Permissões
-                </Link>
-              </div>
+                    Usuários e Permissões
+                  </Link>
+                </li>
+              </ul>
             </>
           )}
         </nav>
@@ -424,19 +412,31 @@ export default function SystemSidebar({
             USUÁRIO
         ==================================================== */}
 
-        <div className="border-t border-white/[0.07] p-4">
-          <div className="mb-3 px-2">
-            <p className="truncate text-sm font-medium text-white/80">
-              {
-                profile.full_name
-              }
-            </p>
+        <div className="border-t border-neutral-content/10 p-4">
+          <div className="mb-3 flex items-center gap-3 px-2">
+            <div className="avatar avatar-placeholder">
+              <div className="w-9 rounded-full bg-primary text-primary-content">
+                <span className="text-xs font-semibold">
+                  {getInitials(
+                    profile.full_name
+                  )}
+                </span>
+              </div>
+            </div>
 
-            <p className="truncate text-[11px] text-white/35">
-              {
-                profile.email
-              }
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                {
+                  profile.full_name
+                }
+              </p>
+
+              <p className="truncate text-xs opacity-40">
+                {
+                  profile.email
+                }
+              </p>
+            </div>
           </div>
 
           <form
@@ -444,7 +444,7 @@ export default function SystemSidebar({
           >
             <button
               type="submit"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/45 transition hover:bg-white/[0.06] hover:text-white"
+              className="btn btn-ghost btn-sm w-full justify-start gap-3 font-normal text-neutral-content/60 hover:text-neutral-content"
             >
               <LogOut
                 size={17}
@@ -460,17 +460,12 @@ export default function SystemSidebar({
           MOBILE
       ====================================================== */}
 
-      <nav
-        className={[
-          "fixed bottom-0 left-0 right-0 z-40 grid border-t border-slate-200 bg-white p-2 lg:hidden",
-          mobileColumns,
-        ].join(" ")}
-      >
+      <div className="dock dock-sm z-40 border-t border-base-300 bg-base-100 lg:hidden">
         {/* DASHBOARD */}
 
         <Link
           href="/dashboard"
-          className={mobileLinkClasses(
+          className={mobileLinkClass(
             isDashboard
           )}
         >
@@ -478,14 +473,16 @@ export default function SystemSidebar({
             size={18}
           />
 
-          Dashboard
+          <span className="dock-label">
+            Início
+          </span>
         </Link>
 
         {/* SOLICITAR */}
 
         <Link
           href="/solicitacoes/nova"
-          className={mobileLinkClasses(
+          className={mobileLinkClass(
             isNewRequest
           )}
         >
@@ -493,14 +490,16 @@ export default function SystemSidebar({
             size={18}
           />
 
-          Solicitar
+          <span className="dock-label">
+            Solicitar
+          </span>
         </Link>
 
         {/* SOLICITAÇÕES */}
 
         <Link
           href="/solicitacoes"
-          className={mobileLinkClasses(
+          className={mobileLinkClass(
             isMyRequests
           )}
         >
@@ -508,14 +507,16 @@ export default function SystemSidebar({
             size={18}
           />
 
-          Solicitações
+          <span className="dock-label">
+            Cartões
+          </span>
         </Link>
 
         {/* DEVOLUÇÕES */}
 
         <Link
           href="/devolucoes"
-          className={mobileLinkClasses(
+          className={mobileLinkClass(
             isReturns
           )}
         >
@@ -523,14 +524,16 @@ export default function SystemSidebar({
             size={18}
           />
 
-          Devoluções
+          <span className="dock-label">
+            Devolver
+          </span>
         </Link>
 
         {/* MEUS PEDIDOS */}
 
         <Link
           href="/meus-pedidos"
-          className={mobileLinkClasses(
+          className={mobileLinkClass(
             isMyOrders
           )}
         >
@@ -538,7 +541,9 @@ export default function SystemSidebar({
             size={18}
           />
 
-          Pedidos
+          <span className="dock-label">
+            Pedidos
+          </span>
         </Link>
 
         {/* FINANCEIRO */}
@@ -546,7 +551,7 @@ export default function SystemSidebar({
         {canFinance && (
           <Link
             href="/financeiro/solicitacoes"
-            className={mobileLinkClasses(
+            className={mobileLinkClass(
               pathname.startsWith(
                 "/financeiro"
               )
@@ -556,7 +561,9 @@ export default function SystemSidebar({
               size={18}
             />
 
-            Financeiro
+            <span className="dock-label">
+              Financeiro
+            </span>
           </Link>
         )}
 
@@ -565,7 +572,7 @@ export default function SystemSidebar({
         {canAdmin && (
           <Link
             href="/administracao/usuarios"
-            className={mobileLinkClasses(
+            className={mobileLinkClass(
               pathname.startsWith(
                 "/administracao"
               )
@@ -575,10 +582,46 @@ export default function SystemSidebar({
               size={18}
             />
 
-            Admin
+            <span className="dock-label">
+              Admin
+            </span>
           </Link>
         )}
-      </nav>
+      </div>
     </>
   );
+}
+
+// ============================================================
+// INICIAIS
+// ============================================================
+
+function getInitials(
+  name: string
+) {
+  const parts =
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (
+    parts.length === 0
+  ) {
+    return "U";
+  }
+
+  if (
+    parts.length === 1
+  ) {
+    return parts[0]
+      .slice(
+        0,
+        2
+      )
+      .toUpperCase();
+  }
+
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`
+    .toUpperCase();
 }

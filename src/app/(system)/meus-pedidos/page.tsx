@@ -19,6 +19,16 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  MotionCard,
+  MotionInteractive,
+  MotionList,
+  MotionListItem,
+  MotionPage,
+  MotionReveal,
+  MotionStatus,
+} from "@/components/ui/motion";
+
 type PageProps = {
   searchParams: Promise<{
     q?: string;
@@ -65,10 +75,6 @@ export default async function MyOrdersPage({
   const supabase =
     await createClient();
 
-  // =========================================================
-  // AUTENTICAÇÃO
-  // =========================================================
-
   const {
     data: claimsData,
   } =
@@ -90,14 +96,6 @@ export default async function MyOrdersPage({
   const status =
     params.status?.trim() ??
     "";
-
-  // =========================================================
-  // CONSULTA
-  //
-  // A view usa security_invoker.
-  // A RLS da sienge_purchase_items garante que o usuário
-  // enxergue somente os próprios registros.
-  // =========================================================
 
   let query =
     supabase
@@ -164,10 +162,6 @@ export default async function MyOrdersPage({
   const requests =
     data ?? [];
 
-  // =========================================================
-  // INDICADORES
-  // =========================================================
-
   const total =
     requests.length;
 
@@ -206,290 +200,301 @@ export default async function MyOrdersPage({
     ).length;
 
   return (
-    <div className="mx-auto max-w-[1500px]">
-      {/* =====================================================
-          CABEÇALHO
-      ====================================================== */}
+    <MotionPage className="mx-auto max-w-[1500px]">
+      {/* CABEÇALHO */}
 
-      <div className="mb-7">
-        <p className="text-sm font-semibold text-[#AF1B1B]">
-          Compras
-        </p>
+      <MotionReveal>
+        <div className="mb-7">
+          <p className="text-sm font-semibold text-primary">
+            Compras
+          </p>
 
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-          Meus Pedidos
-        </h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-base-content">
+            Meus Pedidos
+          </h1>
 
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          Acompanhe suas solicitações de compra realizadas no Sienge, desde a solicitação até a entrega.
-        </p>
-      </div>
-
-      {/* =====================================================
-          INDICADORES
-      ====================================================== */}
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={
-            ShoppingBag
-          }
-          label="Minhas solicitações"
-          value={
-            total
-          }
-        />
-
-        <SummaryCard
-          icon={
-            Clock3
-          }
-          label="Em andamento"
-          value={
-            inProgress
-          }
-        />
-
-        <SummaryCard
-          icon={
-            Truck
-          }
-          label="Compra / Entrega"
-          value={
-            waitingDelivery
-          }
-        />
-
-        <SummaryCard
-          icon={
-            CheckCircle2
-          }
-          label="Entregues"
-          value={
-            completed
-          }
-        />
-      </div>
-
-      {/* =====================================================
-          FILTROS
-      ====================================================== */}
-
-      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <form
-          method="get"
-          className="grid gap-3 lg:grid-cols-[1fr_260px_auto]"
-        >
-          <div className="relative">
-            <Search
-              size={17}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-
-            <input
-              name="q"
-              defaultValue={
-                search
-              }
-              placeholder="Buscar por SC ou centro de custo..."
-              className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none transition focus:border-[#AF1B1B] focus:ring-4 focus:ring-[#AF1B1B]/10"
-            />
-          </div>
-
-          <select
-            name="status"
-            defaultValue={
-              status
-            }
-            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#AF1B1B]"
-          >
-            {trackingStatuses.map(
-              (
-                option
-              ) => (
-                <option
-                  key={
-                    option
-                  }
-                  value={
-                    option
-                  }
-                >
-                  {option ||
-                    "Todos os status"}
-                </option>
-              )
-            )}
-          </select>
-
-          <button
-            type="submit"
-            className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Filtrar
-          </button>
-        </form>
-      </section>
-
-      {/* =====================================================
-          LISTA
-      ====================================================== */}
-
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-6 py-5">
-          <h2 className="font-semibold text-slate-950">
-            Solicitações
-          </h2>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {requests.length} solicitação
-            {requests.length ===
-            1
-              ? ""
-              : "ões"}{" "}
-            encontrada
-            {requests.length ===
-            1
-              ? ""
-              : "s"}.
+          <p className="mt-2 max-w-3xl text-sm text-base-content/55">
+            Acompanhe suas solicitações de compra realizadas no Sienge.
           </p>
         </div>
+      </MotionReveal>
 
-        {requests.length ===
-        0 ? (
-          <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-              <PackageSearch
-                size={25}
-                className="text-slate-400"
-              />
-            </div>
+      {/* INDICADORES */}
 
-            <p className="mt-4 text-sm font-semibold text-slate-800">
-              Nenhuma solicitação encontrada
-            </p>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MotionCard
+          delay={0.05}
+        >
+          <SummaryCard
+            icon={
+              ShoppingBag
+            }
+            label="Minhas solicitações"
+            value={
+              total
+            }
+          />
+        </MotionCard>
 
-            <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
-              Quando suas solicitações do Sienge forem importadas e vinculadas ao seu usuário, elas aparecerão aqui automaticamente.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {requests.map(
-              (
-                request
-              ) => (
-                <Link
-                  key={
-                    request.request_key
+        <MotionCard
+          delay={0.1}
+        >
+          <SummaryCard
+            icon={
+              Clock3
+            }
+            label="Em andamento"
+            value={
+              inProgress
+            }
+          />
+        </MotionCard>
+
+        <MotionCard
+          delay={0.15}
+        >
+          <SummaryCard
+            icon={
+              Truck
+            }
+            label="Compra / Entrega"
+            value={
+              waitingDelivery
+            }
+          />
+        </MotionCard>
+
+        <MotionCard
+          delay={0.2}
+        >
+          <SummaryCard
+            icon={
+              CheckCircle2
+            }
+            label="Entregues"
+            value={
+              completed
+            }
+          />
+        </MotionCard>
+      </div>
+
+      {/* FILTROS */}
+
+      <MotionReveal
+        delay={0.12}
+      >
+        <section className="card mb-6 border border-base-300 bg-base-100">
+          <div className="card-body p-5">
+            <form
+              method="get"
+              className="grid gap-3 lg:grid-cols-[1fr_260px_auto]"
+            >
+              <label className="input input-bordered flex items-center gap-2">
+                <Search
+                  size={17}
+                  className="opacity-40"
+                />
+
+                <input
+                  name="q"
+                  defaultValue={
+                    search
                   }
-                  href={`/meus-pedidos/${request.request_key}`}
-                  className="group block px-6 py-5 transition hover:bg-slate-50/70"
-                >
-                  <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                    {/* PRINCIPAL */}
+                  placeholder="Buscar por SC ou centro de custo..."
+                  className="grow"
+                />
+              </label>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-bold text-[#AF1B1B]">
-                          SC{" "}
-                          {
-                            request.sc_number
-                          }
-                        </p>
+              <select
+                name="status"
+                defaultValue={
+                  status
+                }
+                className="select select-bordered w-full"
+              >
+                {trackingStatuses.map(
+                  (
+                    option
+                  ) => (
+                    <option
+                      key={
+                        option
+                      }
+                      value={
+                        option
+                      }
+                    >
+                      {option ||
+                        "Todos os status"}
+                    </option>
+                  )
+                )}
+              </select>
 
-                        <TrackingStatus
-                          status={
-                            request.tracking_status
-                          }
-                        />
-                      </div>
-
-                      <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-900">
-                        {request.cost_center_or_site ??
-                          "Centro de custo não informado"}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CalendarDays
-                            size={14}
-                          />
-
-                          Solicitado em{" "}
-                          {formatDate(
-                            request.request_date
-                          )}
-                        </span>
-
-                        <span>
-                          {
-                            request.items_count
-                          }{" "}
-                          item
-                          {request.items_count ===
-                          1
-                            ? ""
-                            : "s"}
-                        </span>
-
-                        {request.orders_count >
-                          0 && (
-                          <span>
-                            {
-                              request.orders_count
-                            }{" "}
-                            pedido
-                            {request.orders_count ===
-                            1
-                              ? ""
-                              : "s"}{" "}
-                            gerado
-                            {request.orders_count ===
-                            1
-                              ? ""
-                              : "s"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* PREVISÃO */}
-
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[180px_40px] xl:items-center">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                          Próxima previsão
-                        </p>
-
-                        <p className="mt-1 text-sm font-semibold text-slate-700">
-                          {formatDate(
-                            request.next_delivery_forecast
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="hidden justify-end xl:flex">
-                        <ArrowRight
-                          size={19}
-                          className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#AF1B1B]"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              )
-            )}
+              <button
+                type="submit"
+                className="btn btn-neutral"
+              >
+                Filtrar
+              </button>
+            </form>
           </div>
-        )}
-      </section>
-    </div>
+        </section>
+      </MotionReveal>
+
+      {/* LISTA */}
+
+      <MotionReveal
+        delay={0.18}
+      >
+        <section className="card overflow-hidden border border-base-300 bg-base-100">
+          <div className="border-b border-base-300 px-6 py-5">
+            <h2 className="font-semibold text-base-content">
+              Solicitações
+            </h2>
+
+            <p className="mt-1 text-xs opacity-50">
+              {requests.length} solicitação
+              {requests.length ===
+              1
+                ? ""
+                : "ões"}{" "}
+              encontrada
+              {requests.length ===
+              1
+                ? ""
+                : "s"}.
+            </p>
+          </div>
+
+          {requests.length ===
+          0 ? (
+            <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-box bg-base-200">
+                <PackageSearch
+                  size={25}
+                  className="opacity-40"
+                />
+              </div>
+
+              <p className="mt-4 text-sm font-semibold">
+                Nenhuma solicitação encontrada
+              </p>
+
+              <p className="mt-2 max-w-md text-xs opacity-50">
+                Quando suas solicitações forem importadas, elas aparecerão aqui.
+              </p>
+            </div>
+          ) : (
+            <MotionList className="divide-y divide-base-300">
+              {requests.map(
+                (
+                  request
+                ) => (
+                  <MotionListItem
+                    key={
+                      request.request_key
+                    }
+                  >
+                    <MotionInteractive>
+                      <Link
+                        href={`/meus-pedidos/${request.request_key}`}
+                        className="group block px-6 py-5 transition-colors hover:bg-base-200/60"
+                      >
+                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-bold text-primary">
+                                SC{" "}
+                                {
+                                  request.sc_number
+                                }
+                              </p>
+
+                              <MotionStatus>
+                                <TrackingStatus
+                                  status={
+                                    request.tracking_status
+                                  }
+                                />
+                              </MotionStatus>
+                            </div>
+
+                            <p className="mt-2 line-clamp-2 text-sm font-semibold">
+                              {request.cost_center_or_site ??
+                                "Centro de custo não informado"}
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs opacity-55">
+                              <span className="inline-flex items-center gap-1.5">
+                                <CalendarDays
+                                  size={14}
+                                />
+
+                                {formatDate(
+                                  request.request_date
+                                )}
+                              </span>
+
+                              <span>
+                                {
+                                  request.items_count
+                                }{" "}
+                                item
+                                {request.items_count ===
+                                1
+                                  ? ""
+                                  : "s"}
+                              </span>
+
+                              {request.orders_count >
+                                0 && (
+                                <span>
+                                  {
+                                    request.orders_count
+                                  }{" "}
+                                  pedido
+                                  {request.orders_count ===
+                                  1
+                                    ? ""
+                                    : "s"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-6">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-40">
+                                Próxima previsão
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold">
+                                {formatDate(
+                                  request.next_delivery_forecast
+                                )}
+                              </p>
+                            </div>
+
+                            <ArrowRight
+                              size={19}
+                              className="opacity-25 transition-all duration-200 group-hover:translate-x-1 group-hover:text-primary group-hover:opacity-100"
+                            />
+                          </div>
+                        </div>
+                      </Link>
+                    </MotionInteractive>
+                  </MotionListItem>
+                )
+              )}
+            </MotionList>
+          )}
+        </section>
+      </MotionReveal>
+    </MotionPage>
   );
 }
-
-// ============================================================
-// COMPONENTES
-// ============================================================
 
 function SummaryCard({
   icon: Icon,
@@ -504,20 +509,23 @@ function SummaryCard({
   value: number;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-        <Icon
-          size={19}
-        />
+    <div className="card h-full border border-base-300 bg-base-100">
+      <div className="card-body p-5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-box bg-base-200">
+          <Icon
+            size={19}
+            className="opacity-55"
+          />
+        </div>
+
+        <p className="mt-2 text-2xl font-semibold">
+          {value}
+        </p>
+
+        <p className="text-xs opacity-50">
+          {label}
+        </p>
       </div>
-
-      <p className="mt-4 text-2xl font-semibold text-slate-950">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs text-slate-500">
-        {label}
-      </p>
     </div>
   );
 }
@@ -535,7 +543,7 @@ function TrackingStatus({
   return (
     <span
       className={[
-        "rounded-full border px-2.5 py-1 text-[10px] font-semibold",
+        "badge badge-sm",
         styles,
       ].join(" ")}
     >
@@ -551,25 +559,23 @@ function getStatusStyles(
     status
   ) {
     case "Entregue":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "badge-success";
 
     case "Disponível para retirada":
-      return "border-blue-200 bg-blue-50 text-blue-700";
-
     case "Em processo de entrega":
-      return "border-blue-200 bg-blue-50 text-blue-700";
+      return "badge-info";
 
     case "Compra realizada":
     case "Compra via cartão":
-      return "border-violet-200 bg-violet-50 text-violet-700";
+      return "badge-secondary";
 
     case "Em aprovação":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "badge-warning";
 
     case "Em cotação":
-      return "border-orange-200 bg-orange-50 text-orange-700";
+      return "badge-warning badge-outline";
 
     default:
-      return "border-slate-200 bg-slate-50 text-slate-600";
+      return "badge-ghost";
   }
 }
