@@ -2,16 +2,25 @@
 
 import {
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
 import {
+  AlertTriangle,
   Check,
   Copy,
   ExternalLink,
   Link2,
   X,
 } from "lucide-react";
+
+// ============================================================
+// CONFIGURAÇÃO
+// ============================================================
+
+const REQUEST_PATH =
+  "/solicitacoes/nova";
 
 // ============================================================
 // COMPONENTE
@@ -27,8 +36,8 @@ export default function RequestLinkButton() {
     );
 
   const [
-    requestUrl,
-    setRequestUrl,
+    currentOrigin,
+    setCurrentOrigin,
   ] =
     useState(
       ""
@@ -43,7 +52,7 @@ export default function RequestLinkButton() {
     );
 
   // =========================================================
-  // URL
+  // URL ATUAL
   // =========================================================
 
   useEffect(
@@ -55,12 +64,105 @@ export default function RequestLinkButton() {
         return;
       }
 
-      setRequestUrl(
-        `${window.location.origin}/solicitacoes/nova`
+      setCurrentOrigin(
+        window.location.origin
       );
     },
     []
   );
+
+  // =========================================================
+  // URL OFICIAL
+  // =========================================================
+
+  const requestUrl =
+    useMemo(
+      () => {
+        // =====================================================
+        // 1. URL DEFINIDA MANUALMENTE
+        // =====================================================
+
+        const configuredUrl =
+          process.env
+            .NEXT_PUBLIC_APP_URL
+            ?.trim();
+
+        if (
+          configuredUrl
+        ) {
+          return `${normalizeBaseUrl(
+            configuredUrl
+          )}${REQUEST_PATH}`;
+        }
+
+        // =====================================================
+        // 2. FALLBACK PARA O AMBIENTE ATUAL
+        // =====================================================
+
+        if (
+          currentOrigin
+        ) {
+          return `${normalizeBaseUrl(
+            currentOrigin
+          )}${REQUEST_PATH}`;
+        }
+
+        return "";
+      },
+      [
+        currentOrigin,
+      ]
+    );
+
+  // =========================================================
+  // IDENTIFICA PREVIEW DA VERCEL
+  // =========================================================
+
+  const usingVercelPreview =
+    useMemo(
+      () => {
+        if (
+          !currentOrigin
+        ) {
+          return false;
+        }
+
+        const configuredUrl =
+          process.env
+            .NEXT_PUBLIC_APP_URL
+            ?.trim();
+
+        // Se existe URL oficial configurada,
+        // não importa se o administrador está
+        // acessando um Preview.
+        if (
+          configuredUrl
+        ) {
+          return false;
+        }
+
+        try {
+          const url =
+            new URL(
+              currentOrigin
+            );
+
+          return (
+            url.hostname.endsWith(
+              ".vercel.app"
+            ) &&
+            url.hostname.includes(
+              "-"
+            )
+          );
+        } catch {
+          return false;
+        }
+      },
+      [
+        currentOrigin,
+      ]
+    );
 
   // =========================================================
   // ESC
@@ -107,17 +209,38 @@ export default function RequestLinkButton() {
   );
 
   // =========================================================
+  // RESET COPIADO
+  // =========================================================
+
+  useEffect(
+    () => {
+      if (
+        !open
+      ) {
+        setCopied(
+          false
+        );
+      }
+    },
+    [
+      open,
+    ]
+  );
+
+  // =========================================================
   // COPIAR
   // =========================================================
 
   async function handleCopy() {
-    try {
-      const url =
-        requestUrl ||
-        `${window.location.origin}/solicitacoes/nova`;
+    if (
+      !requestUrl
+    ) {
+      return;
+    }
 
+    try {
       await navigator.clipboard.writeText(
-        url
+        requestUrl
       );
 
       setCopied(
@@ -147,12 +270,14 @@ export default function RequestLinkButton() {
   // =========================================================
 
   function handleOpen() {
-    const url =
-      requestUrl ||
-      `${window.location.origin}/solicitacoes/nova`;
+    if (
+      !requestUrl
+    ) {
+      return;
+    }
 
     window.open(
-      url,
+      requestUrl,
       "_blank",
       "noopener,noreferrer"
     );
@@ -214,7 +339,7 @@ export default function RequestLinkButton() {
               CONTEÚDO
           ================================================== */}
 
-          <div className="relative z-10 w-full max-w-[520px] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_30px_100px_rgba(0,0,0,0.18)]">
+          <div className="relative z-10 w-full max-w-[560px] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_30px_100px_rgba(0,0,0,0.18)]">
             {/* ===============================================
                 HEADER
             ================================================ */}
@@ -238,7 +363,7 @@ export default function RequestLinkButton() {
                     Link de solicitação
                   </h2>
 
-                  <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  <p className="mt-1 max-w-[390px] text-[11px] leading-5 text-slate-500">
                     Compartilhe este endereço para acessar diretamente
                     a solicitação de compra.
                   </p>
@@ -270,7 +395,7 @@ export default function RequestLinkButton() {
 
             <div className="px-5 py-5 sm:px-6">
               <p className="mb-2 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                Endereço
+                Endereço para compartilhar
               </p>
 
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
@@ -282,12 +407,15 @@ export default function RequestLinkButton() {
                     className="truncate text-[11px] font-medium text-slate-600"
                   >
                     {requestUrl ||
-                      "Gerando endereço..."}
+                      "Preparando endereço..."}
                   </p>
                 </div>
 
                 <button
                   type="button"
+                  disabled={
+                    !requestUrl
+                  }
                   onClick={
                     handleCopy
                   }
@@ -296,6 +424,9 @@ export default function RequestLinkButton() {
                     copied
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 hover:text-[#AF1B1B]",
+                    !requestUrl
+                      ? "cursor-not-allowed opacity-50"
+                      : "",
                   ].join(
                     " "
                   )}
@@ -325,16 +456,58 @@ export default function RequestLinkButton() {
               </div>
 
               {/* =============================================
-                  AVISO
+                  AVISO DE PREVIEW
+              ============================================== */}
+
+              {usingVercelPreview && (
+                <div className="mt-4 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <AlertTriangle
+                    size={
+                      16
+                    }
+                    className="mt-0.5 shrink-0 text-red-600"
+                  />
+
+                  <div>
+                    <p className="text-[10px] font-bold text-red-800">
+                      URL de Preview detectada
+                    </p>
+
+                    <p className="mt-1 text-[10px] leading-5 text-red-700/80">
+                      Este endereço pode estar protegido pela Vercel.
+                      Configure NEXT_PUBLIC_APP_URL com o domínio
+                      oficial de produção antes de compartilhar este
+                      link.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* =============================================
+                  AVISO DE LOGIN
               ============================================== */}
 
               <div className="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3">
                 <p className="text-[10px] leading-5 text-amber-900/75">
-                  O usuário que receber este link ainda precisará estar
+                  O usuário que receber este endereço precisará estar
                   autenticado no Projeta Compras para acessar a
                   solicitação.
                 </p>
               </div>
+
+              {/* =============================================
+                  URL CONFIGURADA
+              ============================================== */}
+
+              {!usingVercelPreview &&
+                process.env
+                  .NEXT_PUBLIC_APP_URL && (
+                  <div className="mt-3 flex items-center gap-2 text-[9px] font-medium text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+
+                    Link utilizando o ambiente oficial de produção
+                  </div>
+                )}
             </div>
 
             {/* ===============================================
@@ -357,10 +530,13 @@ export default function RequestLinkButton() {
 
               <button
                 type="button"
+                disabled={
+                  !requestUrl
+                }
                 onClick={
                   handleOpen
                 }
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#171717] px-4 text-[11px] font-semibold text-white shadow-sm transition hover:bg-black"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#171717] px-4 text-[11px] font-semibold text-white shadow-sm transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ExternalLink
                   size={
@@ -373,10 +549,13 @@ export default function RequestLinkButton() {
 
               <button
                 type="button"
+                disabled={
+                  !requestUrl
+                }
                 onClick={
                   handleCopy
                 }
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#AF1B1B] px-4 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#941717]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#AF1B1B] px-4 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#941717] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {copied ? (
                   <Check
@@ -402,4 +581,29 @@ export default function RequestLinkButton() {
       )}
     </>
   );
+}
+
+// ============================================================
+// NORMALIZA URL
+// ============================================================
+
+function normalizeBaseUrl(
+  value: string
+) {
+  let url =
+    value.trim();
+
+  while (
+    url.endsWith(
+      "/"
+    )
+  ) {
+    url =
+      url.slice(
+        0,
+        -1
+      );
+  }
+
+  return url;
 }
