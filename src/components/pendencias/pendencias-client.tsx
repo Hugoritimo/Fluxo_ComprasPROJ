@@ -12,7 +12,6 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
-  ArrowRight,
   Bell,
   CheckCircle2,
   ChevronRight,
@@ -39,8 +38,6 @@ import type {
 } from "@/lib/pendencias/summary";
 
 import {
-  MotionList,
-  MotionListItem,
   MotionReveal,
   MotionStagger,
   MotionStaggerItem,
@@ -295,7 +292,9 @@ export default function PendenciasClient({
 
             if (
               normalizedQuery &&
-              !entry.searchText.includes(
+              !normalizeSearch(
+                entry.searchText
+              ).includes(
                 normalizedQuery
               ) &&
               !normalizeSearch(
@@ -327,31 +326,70 @@ export default function PendenciasClient({
   // GROUPS
   // =========================================================
 
-  const criticalEntries =
-    filteredEntries.filter(
-      (
-        entry
-      ) =>
-        entry.priority ===
-        "critical"
-    );
+  const {
+    criticalEntries,
+    warningEntries,
+    infoEntries,
+  } =
+    useMemo(
+      () => {
+        const critical:
+          PendingEntry[] =
+          [];
 
-  const warningEntries =
-    filteredEntries.filter(
-      (
-        entry
-      ) =>
-        entry.priority ===
-        "warning"
-    );
+        const warning:
+          PendingEntry[] =
+          [];
 
-  const infoEntries =
-    filteredEntries.filter(
-      (
-        entry
-      ) =>
-        entry.priority ===
-        "info"
+        const info:
+          PendingEntry[] =
+          [];
+
+        for (
+          const entry
+          of filteredEntries
+        ) {
+          if (
+            entry.priority ===
+            "critical"
+          ) {
+            critical.push(
+              entry
+            );
+
+            continue;
+          }
+
+          if (
+            entry.priority ===
+            "warning"
+          ) {
+            warning.push(
+              entry
+            );
+
+            continue;
+          }
+
+          info.push(
+            entry
+          );
+        }
+
+        return {
+          criticalEntries:
+            critical,
+
+          warningEntries:
+            warning,
+
+          infoEntries:
+            info,
+        };
+      },
+      [
+        filteredEntries,
+      ]
     );
 
   // =========================================================
@@ -609,7 +647,7 @@ export default function PendenciasClient({
 
         <MotionReveal
           delay={
-            0.06
+            0.04
           }
         >
           <section className="mt-5 overflow-hidden rounded-[20px] border border-base-300/80 bg-base-100 shadow-[var(--projeta-shadow-sm)]">
@@ -816,71 +854,50 @@ export default function PendenciasClient({
         {/* ===================================================
             QUEUE
         ==================================================== */}
+        {/*
+         * IMPORTANTE:
+         *
+         * A fila NÃO usa MotionReveal, MotionList ou
+         * MotionListItem.
+         *
+         * Ela precisa aparecer imediatamente quando os dados
+         * já estão disponíveis.
+         *
+         * Isso evita registros presos em opacity: 0 por falha
+         * ou atraso do IntersectionObserver.
+         */}
 
-        <MotionReveal
-          delay={
-            0.08
-          }
-        >
-          <section className="mt-5 overflow-hidden rounded-[22px] border border-base-300 bg-base-100 shadow-[var(--projeta-shadow-sm)]">
-            <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5 sm:px-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Activity
-                    size={
-                      13
-                    }
-                    className="text-primary"
-                  />
+        <section className="mt-5 overflow-hidden rounded-[22px] border border-base-300 bg-base-100 shadow-[var(--projeta-shadow-sm)]">
+          <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5 sm:px-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Activity
+                  size={
+                    13
+                  }
+                  className="text-primary"
+                />
 
-                  <p className="projeta-section-label">
-                    Fila operacional
-                  </p>
-                </div>
-
-                <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
-                  Itens que exigem acompanhamento
-                </h2>
-
-                <p className="mt-1 text-[9px] text-base-content/35">
-                  Clique em uma ocorrência para visualizar os detalhes.
+                <p className="projeta-section-label">
+                  Fila operacional
                 </p>
               </div>
 
-              {(filter !==
-                "todas" ||
-                query) && (
-                <button
-                  type="button"
-                  onClick={
-                    () => {
-                      setFilter(
-                        "todas"
-                      );
+              <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
+                Itens que exigem acompanhamento
+              </h2>
 
-                      setQuery(
-                        ""
-                      );
-                    }
-                  }
-                  className="btn btn-ghost btn-xs rounded-lg text-[9px]"
-                >
-                  Limpar filtros
-                </button>
-              )}
+              <p className="mt-1 text-[9px] text-base-content/35">
+                Clique em uma ocorrência para visualizar os detalhes.
+              </p>
             </div>
 
-            {filteredEntries.length ===
-            0 ? (
-              <EmptyState
-                hasFilters={
-                  filter !==
-                    "todas" ||
-                  Boolean(
-                    query
-                  )
-                }
-                onClear={
+            {(filter !==
+              "todas" ||
+              query) && (
+              <button
+                type="button"
+                onClick={
                   () => {
                     setFilter(
                       "todas"
@@ -891,57 +908,84 @@ export default function PendenciasClient({
                     );
                   }
                 }
-              />
-            ) : (
-              <div>
-                {criticalEntries.length >
-                  0 && (
-                  <QueueGroup
-                    title="Críticas"
-                    description="Ocorrências que exigem prioridade imediata."
-                    entries={
-                      criticalEntries
-                    }
-                    tone="error"
-                    onSelect={
-                      setSelectedEntry
-                    }
-                  />
-                )}
-
-                {warningEntries.length >
-                  0 && (
-                  <QueueGroup
-                    title="Em atenção"
-                    description="Itens que precisam ser acompanhados antes de se tornarem críticos."
-                    entries={
-                      warningEntries
-                    }
-                    tone="warning"
-                    onSelect={
-                      setSelectedEntry
-                    }
-                  />
-                )}
-
-                {infoEntries.length >
-                  0 && (
-                  <QueueGroup
-                    title="Informativas"
-                    description="Ocorrências de acompanhamento."
-                    entries={
-                      infoEntries
-                    }
-                    tone="info"
-                    onSelect={
-                      setSelectedEntry
-                    }
-                  />
-                )}
-              </div>
+                className="btn btn-ghost btn-xs rounded-lg text-[9px]"
+              >
+                Limpar filtros
+              </button>
             )}
-          </section>
-        </MotionReveal>
+          </div>
+
+          {filteredEntries.length ===
+          0 ? (
+            <EmptyState
+              hasFilters={
+                filter !==
+                  "todas" ||
+                Boolean(
+                  query
+                )
+              }
+              onClear={
+                () => {
+                  setFilter(
+                    "todas"
+                  );
+
+                  setQuery(
+                    ""
+                  );
+                }
+              }
+            />
+          ) : (
+            <div>
+              {criticalEntries.length >
+                0 && (
+                <QueueGroup
+                  title="Críticas"
+                  description="Ocorrências que exigem prioridade imediata."
+                  entries={
+                    criticalEntries
+                  }
+                  tone="error"
+                  onSelect={
+                    setSelectedEntry
+                  }
+                />
+              )}
+
+              {warningEntries.length >
+                0 && (
+                <QueueGroup
+                  title="Em atenção"
+                  description="Itens que precisam ser acompanhados antes de se tornarem críticos."
+                  entries={
+                    warningEntries
+                  }
+                  tone="warning"
+                  onSelect={
+                    setSelectedEntry
+                  }
+                />
+              )}
+
+              {infoEntries.length >
+                0 && (
+                <QueueGroup
+                  title="Informativas"
+                  description="Ocorrências de acompanhamento."
+                  entries={
+                    infoEntries
+                  }
+                  tone="info"
+                  onSelect={
+                    setSelectedEntry
+                  }
+                />
+              )}
+            </div>
+          )}
+        </section>
 
         {/* ===================================================
             FOOTER
@@ -1254,31 +1298,38 @@ function QueueGroup({
         </span>
       </div>
 
-      <MotionList className="divide-y divide-base-300/60">
+      {/*
+       * LISTA ESTÁTICA
+       *
+       * Sem MotionList.
+       * Sem MotionListItem.
+       * Sem content-visibility.
+       *
+       * Os registros sempre entram no DOM visíveis.
+       */}
+
+      <div className="divide-y divide-base-300/60">
         {entries.map(
           (
             entry
           ) => (
-            <MotionListItem
+            <PendingRow
               key={
                 entry.id
               }
-            >
-              <PendingRow
-                entry={
-                  entry
-                }
-                onClick={
-                  () =>
-                    onSelect(
-                      entry
-                    )
-                }
-              />
-            </MotionListItem>
+              entry={
+                entry
+              }
+              onClick={
+                () =>
+                  onSelect(
+                    entry
+                  )
+              }
+            />
           )
         )}
-      </MotionList>
+      </div>
     </section>
   );
 }
@@ -1839,15 +1890,13 @@ function EmptyState({
 }) {
   return (
     <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
-      <MotionStatus>
-        <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-success/10 text-success">
-          <CheckCircle2
-            size={
-              27
-            }
-          />
-        </div>
-      </MotionStatus>
+      <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-success/10 text-success">
+        <CheckCircle2
+          size={
+            27
+          }
+        />
+      </div>
 
       <h3 className="mt-5 text-[15px] font-[700]">
         Nenhuma pendência encontrada
