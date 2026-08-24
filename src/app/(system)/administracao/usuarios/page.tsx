@@ -1,86 +1,99 @@
-import type {
-  ElementType,
-} from "react";
-
 import Link from "next/link";
-
-import {
-  ArrowRight,
-  Plus,
-  Search,
-  ShieldCheck,
-  UserCheck,
-  UserCog,
-  UserRound,
-  UserX,
-} from "lucide-react";
 
 import {
   redirect,
 } from "next/navigation";
 
 import {
+  CheckCircle2,
+  Clock3,
+  KeyRound,
+  Search,
+  ShieldCheck,
+  UserRound,
+  UsersRound,
+  XCircle,
+} from "lucide-react";
+
+import {
   createClient,
 } from "@/lib/supabase/server";
+
+import {
+  MotionCard,
+  MotionPage,
+  MotionReveal,
+} from "@/components/ui/motion";
+
+import PageHeader from "@/components/ui/projeta/page-header";
+
+import MetricCard from "@/components/ui/projeta/metric-card";
+
+import CreateUserDialog from "./create-user-dialog";
+
+import FirstAccessLinkButton from "./first-access-link-button";
+
+import UserStatusButton from "./user-status-button";
+
+// ============================================================
+// TIPOS
+// ============================================================
 
 type PageProps = {
   searchParams: Promise<{
     q?: string;
+    perfil?: string;
     status?: string;
   }>;
 };
 
-const roleLabels: Record<
-  string,
-  string
-> = {
-  requester:
-    "Solicitante",
+type UserRow = {
+  id: string;
 
-  buyer:
-    "Comprador",
+  full_name:
+    | string
+    | null;
 
-  finance:
-    "Financeiro",
+  email:
+    | string
+    | null;
 
-  approver:
-    "Aprovador",
+  department:
+    | string
+    | null;
 
-  manager:
-    "Gestor",
+  job_title:
+    | string
+    | null;
 
-  admin:
-    "Administrador",
+  phone:
+    | string
+    | null;
 
-  superadmin:
-    "Superadmin",
+  is_active: boolean;
+
+  must_change_password: boolean;
+
+  last_login_at:
+    | string
+    | null;
+
+  last_password_change_at:
+    | string
+    | null;
+
+  created_at: string;
+
+  updated_at: string;
+
+  roles:
+    | string[]
+    | null;
 };
 
-const roleStyles: Record<
-  string,
-  string
-> = {
-  requester:
-    "bg-slate-100 text-slate-600",
-
-  buyer:
-    "bg-violet-50 text-violet-700",
-
-  finance:
-    "bg-blue-50 text-blue-700",
-
-  approver:
-    "bg-amber-50 text-amber-700",
-
-  manager:
-    "bg-indigo-50 text-indigo-700",
-
-  admin:
-    "bg-red-50 text-red-700",
-
-  superadmin:
-    "bg-[#AF1B1B]/10 text-[#AF1B1B]",
-};
+// ============================================================
+// PAGE
+// ============================================================
 
 export default async function UsersPage({
   searchParams,
@@ -92,55 +105,83 @@ export default async function UsersPage({
     await createClient();
 
   // =========================================================
-  // AUTENTICAÇÃO
-  // =========================================================
-
-  const {
-    data: claimsData,
-  } =
-    await supabase.auth.getClaims();
-
-  const userId =
-    claimsData?.claims?.sub;
-
-  if (!userId) {
-    redirect("/login");
-  }
-
-  // =========================================================
-  // PERMISSÕES
+  // AUTH
   // =========================================================
 
   const {
     data:
-      actorRolesRows,
+      claimsData,
+  } =
+    await supabase.auth.getClaims();
+
+  const currentUserId =
+    claimsData?.claims?.sub;
+
+  if (!currentUserId) {
+    redirect(
+      "/login"
+    );
+  }
+
+  // =========================================================
+  // ROLES DO USUÁRIO ATUAL
+  // =========================================================
+
+  const {
+    data:
+      currentRoleRows,
+    error:
+      currentRolesError,
   } =
     await supabase
       .from(
         "user_roles"
       )
-      .select("role")
+      .select(
+        "role"
+      )
       .eq(
         "user_id",
-        userId
+        currentUserId
       );
 
-  const actorRoles =
+  if (
+    currentRolesError
+  ) {
+    console.error(
+      "Erro ao carregar permissões do usuário atual:",
+      currentRolesError
+    );
+  }
+
+  const currentRoles =
     (
-      actorRolesRows ??
+      currentRoleRows ??
       []
     ).map(
-      (item) =>
-        item.role
+      (
+        row
+      ) =>
+        String(
+          row.role
+        )
+    );
+
+  const canManageUsers =
+    currentRoles.includes(
+      "admin"
+    ) ||
+    currentRoles.includes(
+      "superadmin"
+    );
+
+  const isSuperadmin =
+    currentRoles.includes(
+      "superadmin"
     );
 
   if (
-    !actorRoles.includes(
-      "admin"
-    ) &&
-    !actorRoles.includes(
-      "superadmin"
-    )
+    !canManageUsers
   ) {
     redirect(
       "/dashboard"
@@ -148,104 +189,65 @@ export default async function UsersPage({
   }
 
   // =========================================================
-  // DADOS
+  // CONSULTAS
   // =========================================================
 
   const [
-    profilesResult,
-    rolesResult,
+    usersResult,
+    summaryResult,
   ] =
     await Promise.all([
       supabase
         .from(
-          "profiles"
+          "v_user_management"
         )
         .select(
-          `
-          id,
-          full_name,
-          email,
-          job_title,
-          active,
-          must_set_password,
-          invited_at,
-          created_at,
-          updated_at
-          `
+          "*"
         )
         .order(
           "full_name",
           {
-            ascending: true,
+            ascending:
+              true,
+
+            nullsFirst:
+              false,
           }
         ),
 
       supabase
         .from(
-          "user_roles"
+          "v_user_management_summary"
         )
         .select(
-          `
-          user_id,
-          role
-          `
-        ),
+          "*"
+        )
+        .maybeSingle(),
     ]);
 
   if (
-    profilesResult.error
+    usersResult.error
   ) {
     console.error(
       "Erro ao carregar usuários:",
-      profilesResult.error
+      usersResult.error
     );
   }
 
   if (
-    rolesResult.error
+    summaryResult.error
   ) {
     console.error(
-      "Erro ao carregar permissões:",
-      rolesResult.error
+      "Erro ao carregar resumo dos usuários:",
+      summaryResult.error
     );
   }
 
-  const profiles =
-    profilesResult.data ??
-    [];
-
-  const allRoles =
-    rolesResult.data ??
-    [];
-
-  // =========================================================
-  // MAP DE ROLES
-  // =========================================================
-
-  const rolesMap =
-    new Map<
-      string,
-      string[]
-    >();
-
-  for (
-    const roleRow
-    of allRoles
-  ) {
-    const current =
-      rolesMap.get(
-        roleRow.user_id
-      ) ?? [];
-
-    current.push(
-      roleRow.role
-    );
-
-    rolesMap.set(
-      roleRow.user_id,
-      current
-    );
-  }
+  const users =
+    (
+      usersResult.data ??
+      []
+    ) as UserRow[];
 
   // =========================================================
   // FILTROS
@@ -259,432 +261,985 @@ export default async function UsersPage({
       .trim()
       .toLowerCase();
 
-  const status =
-    (
-      params.status ??
-      ""
-    ).trim();
+  const roleFilter =
+    params.perfil ??
+    "todos";
 
-  const filtered =
-    profiles.filter(
-      (profile) => {
-        const matchesSearch =
-          !search ||
-          profile.full_name
-            ?.toLowerCase()
-            .includes(
-              search
-            ) ||
-          profile.email
-            ?.toLowerCase()
-            .includes(
-              search
-            ) ||
-          profile.job_title
-            ?.toLowerCase()
-            .includes(
-              search
-            );
+  const statusFilter =
+    params.status ??
+    "todos";
 
-        const matchesStatus =
-          !status ||
-          (
-            status ===
-              "active" &&
-            profile.active
-          ) ||
-          (
-            status ===
-              "inactive" &&
-            !profile.active
-          ) ||
-          (
-            status ===
-              "invited" &&
-            profile.must_set_password
+  const filteredUsers =
+    users.filter(
+      (
+        user
+      ) => {
+        const roles =
+          user.roles ??
+          [];
+
+        const effectiveRole =
+          getEffectiveRole(
+            roles
           );
 
-        return (
-          matchesSearch &&
-          matchesStatus
-        );
+        // ====================================================
+        // BUSCA
+        // ====================================================
+
+        if (
+          search
+        ) {
+          const haystack =
+            [
+              user.full_name,
+              user.email,
+              user.department,
+              user.job_title,
+              effectiveRole,
+              getRoleLabel(
+                effectiveRole
+              ),
+            ]
+              .filter(
+                Boolean
+              )
+              .join(
+                " "
+              )
+              .toLowerCase();
+
+          if (
+            !haystack.includes(
+              search
+            )
+          ) {
+            return false;
+          }
+        }
+
+        // ====================================================
+        // PERFIL
+        // ====================================================
+
+        if (
+          roleFilter !==
+            "todos" &&
+          effectiveRole !==
+            roleFilter
+        ) {
+          return false;
+        }
+
+        // ====================================================
+        // STATUS
+        // ====================================================
+
+        if (
+          statusFilter ===
+            "ativos" &&
+          (
+            !user.is_active ||
+            user.must_change_password
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          statusFilter ===
+            "inativos" &&
+          user.is_active
+        ) {
+          return false;
+        }
+
+        if (
+          statusFilter ===
+            "primeiro-acesso" &&
+          (
+            !user.is_active ||
+            !user.must_change_password
+          )
+        ) {
+          return false;
+        }
+
+        return true;
       }
     );
 
   // =========================================================
-  // INDICADORES
+  // MÉTRICAS
   // =========================================================
 
-  const activeCount =
-    profiles.filter(
-      (profile) =>
-        profile.active
+  const firstAccessCount =
+    users.filter(
+      (
+        user
+      ) =>
+        user.is_active &&
+        user.must_change_password
     ).length;
 
-  const invitedCount =
-    profiles.filter(
-      (profile) =>
-        profile.must_set_password
+  const fullyActiveCount =
+    users.filter(
+      (
+        user
+      ) =>
+        user.is_active &&
+        !user.must_change_password
     ).length;
 
-  const financeCount =
-    profiles.filter(
-      (profile) =>
-        (
-          rolesMap.get(
-            profile.id
-          ) ?? []
-        ).includes(
-          "finance"
-        )
+  const inactiveCount =
+    users.filter(
+      (
+        user
+      ) =>
+        !user.is_active
     ).length;
 
-  const adminCount =
-    profiles.filter(
-      (profile) => {
-        const roles =
-          rolesMap.get(
-            profile.id
-          ) ?? [];
+  const summary = {
+    total:
+      Number(
+        summaryResult.data
+          ?.total ??
+          users.length
+      ),
 
-        return (
-          roles.includes(
-            "admin"
-          ) ||
-          roles.includes(
-            "superadmin"
-          )
-        );
-      }
-    ).length;
+    active:
+      fullyActiveCount,
+
+    inactive:
+      inactiveCount,
+
+    firstAccess:
+      firstAccessCount,
+  };
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
-    <div className="mx-auto max-w-[1550px]">
+    <MotionPage className="mx-auto max-w-[1580px]">
       {/* =====================================================
           HEADER
       ====================================================== */}
 
-      <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-[#AF1B1B]">
-            Administração
-          </p>
-
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-            Usuários e Permissões
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Controle o acesso,
-            permissões e convites dos
-            usuários do sistema.
-          </p>
-        </div>
-
-        <Link
-          href="/administracao/usuarios/novo"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#AF1B1B] px-5 text-sm font-semibold text-white transition hover:bg-[#921717]"
-        >
-          <Plus
-            size={18}
-          />
-
-          Novo Usuário
-        </Link>
-      </div>
+      <MotionReveal>
+        <PageHeader
+          eyebrow="Administração"
+          title="Usuários e acessos"
+          description="Gerencie contas, perfis de acesso, primeiro acesso e segurança dos colaboradores."
+          actions={
+            <CreateUserDialog
+              canCreateSuperadmin={
+                isSuperadmin
+              }
+            />
+          }
+        />
+      </MotionReveal>
 
       {/* =====================================================
-          INDICADORES
+          MÉTRICAS
       ====================================================== */}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={
-            UserCheck
+        <MotionCard
+          delay={
+            0.04
           }
-          label="Usuários ativos"
-          value={
-            activeCount
-          }
-        />
+        >
+          <MetricCard
+            icon={
+              UsersRound
+            }
+            label="Usuários"
+            value={
+              summary.total
+            }
+            description="Contas cadastradas"
+            variant="neutral"
+          />
+        </MotionCard>
 
-        <SummaryCard
-          icon={
-            UserRound
+        <MotionCard
+          delay={
+            0.08
           }
-          label="Aguardando ativação"
-          value={
-            invitedCount
-          }
-        />
+        >
+          <MetricCard
+            icon={
+              CheckCircle2
+            }
+            label="Ativos"
+            value={
+              summary.active
+            }
+            description="Acesso configurado"
+            variant="success"
+          />
+        </MotionCard>
 
-        <SummaryCard
-          icon={
-            ShieldCheck
+        <MotionCard
+          delay={
+            0.12
           }
-          label="Financeiro"
-          value={
-            financeCount
-          }
-        />
+        >
+          <MetricCard
+            icon={
+              XCircle
+            }
+            label="Desativados"
+            value={
+              summary.inactive
+            }
+            description="Acesso bloqueado"
+            variant={
+              summary.inactive >
+              0
+                ? "warning"
+                : "neutral"
+            }
+          />
+        </MotionCard>
 
-        <SummaryCard
-          icon={
-            UserCog
+        <MotionCard
+          delay={
+            0.16
           }
-          label="Administradores"
-          value={
-            adminCount
-          }
-        />
+        >
+          <MetricCard
+            icon={
+              KeyRound
+            }
+            label="Primeiro acesso"
+            value={
+              summary.firstAccess
+            }
+            description="Aguardando criação de senha"
+            variant={
+              summary.firstAccess >
+              0
+                ? "info"
+                : "neutral"
+            }
+          />
+        </MotionCard>
       </div>
 
       {/* =====================================================
-          LISTAGEM
+          FILTROS
       ====================================================== */}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 p-5 sm:p-6">
-          <form
-            method="get"
-            className="grid gap-3 lg:grid-cols-[1fr_230px_auto]"
-          >
-            <div className="relative">
-              <Search
-                size={
-                  17
-                }
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+      <MotionReveal
+        delay={
+          0.12
+        }
+      >
+        <form
+          method="get"
+          action="/administracao/usuarios"
+          className="mb-5 grid gap-3 rounded-[20px] border border-base-300 bg-base-100 p-3 lg:grid-cols-[1fr_200px_190px_auto]"
+        >
+          {/* BUSCA */}
 
-              <input
-                name="q"
-                defaultValue={
-                  params.q ??
-                  ""
-                }
-                placeholder="Buscar por nome, e-mail ou cargo..."
-                className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none transition focus:border-[#AF1B1B] focus:ring-4 focus:ring-[#AF1B1B]/10"
-              />
-            </div>
+          <label className="flex h-10 items-center gap-2.5 rounded-xl border border-base-300 bg-base-200/30 px-3 focus-within:border-primary/30">
+            <Search
+              size={
+                15
+              }
+              className="text-base-content/30"
+            />
 
-            <select
-              name="status"
+            <input
+              name="q"
               defaultValue={
-                params.status ??
+                params.q ??
                 ""
               }
-              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#AF1B1B]"
-            >
-              <option value="">
-                Todos
-              </option>
+              placeholder="Buscar nome, e-mail, setor ou cargo..."
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+            />
+          </label>
 
-              <option value="active">
-                Ativos
-              </option>
+          {/* PERFIL */}
 
-              <option value="inactive">
-                Inativos
-              </option>
+          <select
+            name="perfil"
+            defaultValue={
+              roleFilter
+            }
+            className="select w-full"
+          >
+            <option value="todos">
+              Todos os perfis
+            </option>
 
-              <option value="invited">
-                Aguardando ativação
-              </option>
-            </select>
+            <option value="collaborator">
+              Colaboradores
+            </option>
 
-            <button
-              type="submit"
-              className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Filtrar
-            </button>
-          </form>
-        </div>
+            <option value="finance">
+              Financeiro
+            </option>
 
-        <div className="border-b border-slate-100 px-6 py-4">
-          <p className="text-xs text-slate-500">
-            {
-              filtered.length
-            }{" "}
-            usuário
-            {filtered.length ===
-            1
-              ? ""
-              : "s"}{" "}
-            encontrado
-            {filtered.length ===
-            1
-              ? ""
-              : "s"}.
-          </p>
-        </div>
+            <option value="admin">
+              Administradores
+            </option>
 
-        {filtered.length ===
-        0 ? (
-          <div className="flex min-h-[340px] flex-col items-center justify-center p-8 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-              <UserRound
-                size={27}
-              />
+            <option value="superadmin">
+              Superadministradores
+            </option>
+          </select>
+
+          {/* STATUS */}
+
+          <select
+            name="status"
+            defaultValue={
+              statusFilter
+            }
+            className="select w-full"
+          >
+            <option value="todos">
+              Todos os status
+            </option>
+
+            <option value="ativos">
+              Ativos
+            </option>
+
+            <option value="primeiro-acesso">
+              Aguardando primeiro acesso
+            </option>
+
+            <option value="inativos">
+              Desativados
+            </option>
+          </select>
+
+          <button
+            type="submit"
+            className="btn btn-neutral btn-sm h-10 rounded-xl px-5"
+          >
+            Filtrar
+          </button>
+        </form>
+      </MotionReveal>
+
+      {/* =====================================================
+          TABELA
+      ====================================================== */}
+
+      <MotionReveal
+        delay={
+          0.18
+        }
+      >
+        <section className="overflow-hidden rounded-[22px] border border-base-300 bg-base-100">
+          {/* CABEÇALHO DA TABELA */}
+
+          <div className="flex items-center justify-between border-b border-base-300 px-5 py-4 sm:px-6">
+            <div>
+              <h2 className="text-sm font-semibold">
+                Colaboradores
+              </h2>
+
+              <p className="mt-1 text-[10px] text-base-content/40">
+                {
+                  filteredUsers.length
+                }{" "}
+                resultado
+                {filteredUsers.length ===
+                1
+                  ? ""
+                  : "s"}
+              </p>
             </div>
 
-            <h2 className="mt-5 text-lg font-semibold text-slate-800">
-              Nenhum usuário encontrado
-            </h2>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map(
-              (profile) => {
-                const roles =
-                  rolesMap.get(
-                    profile.id
-                  ) ?? [];
-
-                return (
-                  <Link
-                    key={
-                      profile.id
-                    }
-                    href={`/administracao/usuarios/${profile.id}`}
-                    className="group block px-6 py-5 transition hover:bg-slate-50/70"
-                  >
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
-                        {getInitials(
-                          profile.full_name
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-sm font-semibold text-slate-900">
-                            {
-                              profile.full_name
-                            }
-                          </h2>
-
-                          {profile.must_set_password ? (
-                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
-                              Convite pendente
-                            </span>
-                          ) : (
-                            <span
-                              className={[
-                                "rounded-full px-2.5 py-1 text-[10px] font-semibold",
-                                profile.active
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-red-50 text-red-600",
-                              ].join(
-                                " "
-                              )}
-                            >
-                              {profile.active
-                                ? "Ativo"
-                                : "Inativo"}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          {
-                            profile.email
-                          }
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-400">
-                          {profile.job_title ??
-                            "Cargo não informado"}
-                        </p>
-                      </div>
-
-                      <div className="flex max-w-xl flex-wrap gap-2">
-                        {roles.map(
-                          (
-                            role
-                          ) => (
-                            <span
-                              key={
-                                role
-                              }
-                              className={[
-                                "rounded-lg px-2.5 py-1 text-[10px] font-semibold",
-                                roleStyles[
-                                  role
-                                ] ??
-                                  "bg-slate-100 text-slate-600",
-                              ].join(
-                                " "
-                              )}
-                            >
-                              {roleLabels[
-                                role
-                              ] ??
-                                role}
-                            </span>
-                          )
-                        )}
-                      </div>
-
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition group-hover:bg-white group-hover:text-[#AF1B1B]">
-                        <ArrowRight
-                          size={18}
-                        />
-                      </div>
-                    </div>
-                  </Link>
-                );
-              }
+            {(search ||
+              roleFilter !==
+                "todos" ||
+              statusFilter !==
+                "todos") && (
+              <Link
+                href="/administracao/usuarios"
+                className="btn btn-ghost btn-xs"
+              >
+                Limpar filtros
+              </Link>
             )}
           </div>
-        )}
-      </section>
-    </div>
+
+          {/* SEM RESULTADOS */}
+
+          {filteredUsers.length ===
+          0 ? (
+            <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-base-200">
+                <UserRound
+                  size={
+                    23
+                  }
+                  className="text-base-content/25"
+                />
+              </div>
+
+              <p className="mt-4 text-sm font-semibold">
+                Nenhum usuário encontrado
+              </p>
+
+              <p className="mt-1 text-xs text-base-content/40">
+                Ajuste os filtros e tente novamente.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr className="border-base-300 text-[9px] uppercase tracking-[0.12em] text-base-content/35">
+                    <th>
+                      Usuário
+                    </th>
+
+                    <th>
+                      Setor / Cargo
+                    </th>
+
+                    <th>
+                      Perfil
+                    </th>
+
+                    <th>
+                      Status
+                    </th>
+
+                    <th>
+                      Último acesso
+                    </th>
+
+                    <th className="text-right">
+                      Ações
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredUsers.map(
+                    (
+                      user
+                    ) => {
+                      const role =
+                        getEffectiveRole(
+                          user.roles ??
+                            []
+                        );
+
+                      const targetIsSuperadmin =
+                        role ===
+                        "superadmin";
+
+                      const isCurrentUser =
+                        user.id ===
+                        currentUserId;
+
+                      const cannotChangeStatus =
+                        isCurrentUser ||
+                        (
+                          targetIsSuperadmin &&
+                          !isSuperadmin
+                        );
+
+                      const awaitingFirstAccess =
+                        user.is_active &&
+                        user.must_change_password;
+
+                      return (
+                        <tr
+                          key={
+                            user.id
+                          }
+                          className="border-base-300/70 transition-colors hover:bg-base-200/25"
+                        >
+                          {/* =================================
+                              USUÁRIO
+                          ================================= */}
+
+                          <td>
+                            <div className="flex items-center gap-3">
+                              <Avatar
+                                name={
+                                  user.full_name ??
+                                  user.email ??
+                                  "Usuário"
+                                }
+                              />
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="max-w-56 truncate text-xs font-semibold text-base-content/80">
+                                    {
+                                      user.full_name ??
+                                      "Sem nome"
+                                    }
+                                  </p>
+
+                                  {isCurrentUser && (
+                                    <span className="badge badge-ghost badge-xs">
+                                      Você
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="mt-0.5 max-w-60 truncate text-[10px] text-base-content/40">
+                                  {
+                                    user.email ??
+                                    "Sem e-mail"
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* =================================
+                              SETOR / CARGO
+                          ================================= */}
+
+                          <td>
+                            <p className="text-xs font-medium text-base-content/65">
+                              {
+                                user.department ??
+                                "—"
+                              }
+                            </p>
+
+                            <p className="mt-0.5 text-[10px] text-base-content/35">
+                              {
+                                user.job_title ??
+                                "Cargo não informado"
+                              }
+                            </p>
+                          </td>
+
+                          {/* =================================
+                              PERFIL
+                          ================================= */}
+
+                          <td>
+                            <RoleBadge
+                              role={
+                                role
+                              }
+                            />
+                          </td>
+
+                          {/* =================================
+                              STATUS
+                          ================================= */}
+
+                          <td>
+                            <UserAccessStatus
+                              active={
+                                user.is_active
+                              }
+                              mustChangePassword={
+                                user.must_change_password
+                              }
+                            />
+                          </td>
+
+                          {/* =================================
+                              ÚLTIMO ACESSO
+                          ================================= */}
+
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <Clock3
+                                size={
+                                  13
+                                }
+                                className="text-base-content/25"
+                              />
+
+                              <span className="text-[11px] text-base-content/50">
+                                {formatLastLogin(
+                                  user.last_login_at
+                                )}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* =================================
+                              AÇÕES
+                          ================================= */}
+
+                          <td>
+                            <div className="flex items-center justify-end gap-1">
+                              {/* LINK DE PRIMEIRO ACESSO */}
+
+                              {awaitingFirstAccess && (
+                                <FirstAccessLinkButton
+                                  userId={
+                                    user.id
+                                  }
+                                />
+                              )}
+
+                              {/* ATIVAR / DESATIVAR */}
+
+                              <UserStatusButton
+                                userId={
+                                  user.id
+                                }
+                                active={
+                                  user.is_active
+                                }
+                                disabled={
+                                  cannotChangeStatus
+                                }
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </MotionReveal>
+    </MotionPage>
   );
 }
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon:
-    ElementType;
+// ============================================================
+// AVATAR
+// ============================================================
 
-  label: string;
-  value: number;
+function Avatar({
+  name,
+}: {
+  name: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-        <Icon
-          size={19}
-        />
-      </div>
-
-      <p className="mt-4 text-2xl font-semibold text-slate-950">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs text-slate-500">
-        {label}
-      </p>
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-base-200 text-[10px] font-bold text-base-content/55">
+      {getInitials(
+        name
+      )}
     </div>
   );
 }
+
+// ============================================================
+// ROLE
+// ============================================================
+
+function RoleBadge({
+  role,
+}: {
+  role: string;
+}) {
+  const config =
+    role ===
+    "superadmin"
+      ? {
+          label:
+            "Superadmin",
+
+          className:
+            "badge-error",
+        }
+      : role ===
+          "admin"
+        ? {
+            label:
+              "Administrador",
+
+            className:
+              "badge-primary",
+          }
+        : role ===
+            "finance"
+          ? {
+              label:
+                "Financeiro",
+
+              className:
+                "badge-info",
+            }
+          : {
+              label:
+                "Colaborador",
+
+              className:
+                "badge-ghost",
+            };
+
+  return (
+    <span
+      className={[
+        "badge badge-sm gap-1 whitespace-nowrap",
+        config.className,
+      ].join(
+        " "
+      )}
+    >
+      {(role ===
+        "admin" ||
+        role ===
+          "superadmin") && (
+        <ShieldCheck
+          size={
+            10
+          }
+        />
+      )}
+
+      {
+        config.label
+      }
+    </span>
+  );
+}
+
+// ============================================================
+// STATUS DE ACESSO
+// ============================================================
+
+function UserAccessStatus({
+  active,
+  mustChangePassword,
+}: {
+  active: boolean;
+
+  mustChangePassword: boolean;
+}) {
+  // =========================================================
+  // DESATIVADO
+  // =========================================================
+
+  if (
+    !active
+  ) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-error">
+          <span className="h-1.5 w-1.5 rounded-full bg-error" />
+
+          Desativado
+        </span>
+
+        <span className="text-[9px] text-base-content/35">
+          Acesso bloqueado
+        </span>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // AGUARDANDO PRIMEIRO ACESSO
+  // =========================================================
+
+  if (
+    mustChangePassword
+  ) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-warning">
+          <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+
+          Aguardando acesso
+        </span>
+
+        <span className="flex items-center gap-1 text-[9px] font-medium text-info">
+          <KeyRound
+            size={
+              10
+            }
+          />
+
+          Criar senha
+        </span>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // ATIVO
+  // =========================================================
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="flex items-center gap-1.5 text-[10px] font-semibold text-success">
+        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+
+        Ativo
+      </span>
+
+      <span className="text-[9px] text-base-content/35">
+        Acesso configurado
+      </span>
+    </div>
+  );
+}
+
+// ============================================================
+// PERFIL EFETIVO
+// ============================================================
+
+function getEffectiveRole(
+  roles: string[]
+) {
+  if (
+    roles.includes(
+      "superadmin"
+    )
+  ) {
+    return "superadmin";
+  }
+
+  if (
+    roles.includes(
+      "admin"
+    )
+  ) {
+    return "admin";
+  }
+
+  if (
+    roles.includes(
+      "finance"
+    )
+  ) {
+    return "finance";
+  }
+
+  return "collaborator";
+}
+
+// ============================================================
+// LABEL DO PERFIL
+// ============================================================
+
+function getRoleLabel(
+  role: string
+) {
+  if (
+    role ===
+    "superadmin"
+  ) {
+    return "Superadministrador";
+  }
+
+  if (
+    role ===
+    "admin"
+  ) {
+    return "Administrador";
+  }
+
+  if (
+    role ===
+    "finance"
+  ) {
+    return "Financeiro";
+  }
+
+  return "Colaborador";
+}
+
+// ============================================================
+// ÚLTIMO LOGIN
+// ============================================================
+
+function formatLastLogin(
+  value:
+    | string
+    | null
+) {
+  if (
+    !value
+  ) {
+    return "Nunca acessou";
+  }
+
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day:
+        "2-digit",
+
+      month:
+        "2-digit",
+
+      year:
+        "numeric",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  ).format(
+    date
+  );
+}
+
+// ============================================================
+// INICIAIS
+// ============================================================
 
 function getInitials(
   name: string
 ) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(
-      (part) =>
-        part[0]
-          ?.toUpperCase()
-    )
-    .join("");
+  const words =
+    name
+      .trim()
+      .split(
+        /\s+/
+      )
+      .filter(
+        Boolean
+      );
+
+  if (
+    words.length ===
+    0
+  ) {
+    return "U";
+  }
+
+  if (
+    words.length ===
+    1
+  ) {
+    return words[0]
+      .slice(
+        0,
+        2
+      )
+      .toUpperCase();
+  }
+
+  return `${words[0][0]}${words[words.length - 1][0]}`
+    .toUpperCase();
 }

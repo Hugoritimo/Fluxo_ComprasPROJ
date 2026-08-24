@@ -1,189 +1,274 @@
-import { redirect } from "next/navigation";
+import type {
+  ReactNode,
+} from "react";
+
+import {
+  redirect,
+} from "next/navigation";
 
 import SystemSidebar from "@/components/layout/system-sidebar";
-import { createClient } from "@/lib/supabase/server";
+
+import SystemTopbar from "@/components/system/system-topbar";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+// ============================================================
+// TIPOS
+// ============================================================
+
+type SystemLayoutProps = {
+  children: ReactNode;
+};
+
+type ProfileRow = {
+  id: string;
+
+  full_name:
+    | string
+    | null;
+
+  email:
+    | string
+    | null;
+
+  department:
+    | string
+    | null;
+
+  job_title:
+    | string
+    | null;
+
+  is_active: boolean;
+
+  must_change_password: boolean;
+};
+
+// ============================================================
+// LAYOUT PROTEGIDO
+// ============================================================
 
 export default async function SystemLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  const supabase = await createClient();
+}: Readonly<SystemLayoutProps>) {
+  const supabase =
+    await createClient();
 
   // =========================================================
-  // AUTENTICAÇÃO
+  // 1. AUTENTICAÇÃO
   // =========================================================
 
   const {
-    data: claimsData,
-    error: claimsError,
-  } = await supabase.auth.getClaims();
+    data:
+      claimsData,
+    error:
+      claimsError,
+  } =
+    await supabase.auth.getClaims();
 
   const userId =
     claimsData?.claims?.sub;
 
-  console.log(
-    "========================================"
-  );
-
-  console.log(
-    "[SYSTEM LAYOUT] claims error:",
-    claimsError
-  );
-
-  console.log(
-    "[SYSTEM LAYOUT] user id:",
-    userId
-  );
-
-  if (!userId) {
-    console.log(
-      "[SYSTEM LAYOUT] REDIRECT: sem userId"
+  if (
+    claimsError ||
+    !userId
+  ) {
+    redirect(
+      "/login"
     );
-
-    redirect("/login");
   }
 
   // =========================================================
-  // PERFIL
+  // 2. PERFIL + ROLES EM PARALELO
+  // =========================================================
+  //
+  // Antes:
+  // perfil -> aguarda -> roles
+  //
+  // Agora:
+  // perfil + roles simultaneamente.
   // =========================================================
 
-  const {
-    data: profile,
-    error: profileError,
-  } = await supabase
-    .from("profiles")
-    .select(
-      `
-      id,
-      full_name,
-      email,
-      job_title,
-      active
-      `
-    )
-    .eq("id", userId)
-    .maybeSingle();
+  const [
+    profileResult,
+    rolesResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "profiles"
+        )
+        .select(
+          `
+          id,
+          full_name,
+          email,
+          department,
+          job_title,
+          is_active,
+          must_change_password
+          `
+        )
+        .eq(
+          "id",
+          userId
+        )
+        .maybeSingle(),
 
-  console.log(
-    "[SYSTEM LAYOUT] profile:",
-    profile
-  );
+      supabase
+        .from(
+          "user_roles"
+        )
+        .select(
+          "role"
+        )
+        .eq(
+          "user_id",
+          userId
+        ),
+    ]);
 
-  console.log(
-    "[SYSTEM LAYOUT] profile error:",
-    profileError
-  );
+  const profile =
+    profileResult.data as
+      | ProfileRow
+      | null;
 
-  if (profileError) {
-    console.log(
-      "[SYSTEM LAYOUT] REDIRECT: erro no profile"
+  // =========================================================
+  // 3. PROFILE INVÁLIDO
+  // =========================================================
+
+  if (
+    profileResult.error ||
+    !profile
+  ) {
+    console.error(
+      "[SYSTEM LAYOUT] Perfil não encontrado:",
+      profileResult.error
     );
 
-    redirect("/login");
-  }
+    await supabase.auth.signOut();
 
-  if (!profile) {
-    console.log(
-      "[SYSTEM LAYOUT] REDIRECT: profile não encontrado"
+    redirect(
+      "/login"
     );
-
-    redirect("/login");
-  }
-
-  if (!profile.active) {
-    console.log(
-      "[SYSTEM LAYOUT] REDIRECT: usuário inativo"
-    );
-
-    redirect("/login");
   }
 
   // =========================================================
-  // ROLES
+  // 4. CONTA DESATIVADA
   // =========================================================
 
-  const {
-    data: roleRows,
-    error: rolesError,
-  } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId);
+  if (
+    profile.is_active ===
+    false
+  ) {
+    await supabase.auth.signOut();
 
-  console.log(
-    "[SYSTEM LAYOUT] roles:",
-    roleRows
-  );
+    redirect(
+      "/login"
+    );
+  }
 
-  console.log(
-    "[SYSTEM LAYOUT] roles error:",
-    rolesError
-  );
+  // =========================================================
+  // 5. TROCA OBRIGATÓRIA DE SENHA
+  // =========================================================
+
+  if (
+    profile.must_change_password ===
+    true
+  ) {
+    redirect(
+      "/primeiro-acesso"
+    );
+  }
+
+  // =========================================================
+  // 6. ROLES
+  // =========================================================
+
+  if (
+    rolesResult.error
+  ) {
+    console.error(
+      "[SYSTEM LAYOUT] Erro ao carregar roles:",
+      rolesResult.error
+    );
+  }
 
   const roles =
-    (roleRows ?? []).map(
-      (item) => item.role
+    (
+      rolesResult.data ??
+      []
+    ).map(
+      (
+        item
+      ) =>
+        String(
+          item.role
+        )
     );
 
-  console.log(
-    "[SYSTEM LAYOUT] acesso liberado"
-  );
+  // =========================================================
+  // 7. PERFIL COMPARTILHADO
+  // =========================================================
 
-  console.log(
-    "========================================"
-  );
+  const fullName =
+    profile.full_name?.trim() ||
+    "Usuário";
+
+  const email =
+    profile.email?.trim() ||
+    "";
+
+  const shellProfile = {
+    full_name:
+      fullName,
+
+    email,
+  };
+
+  // =========================================================
+  // 8. RENDERIZAÇÃO
+  // =========================================================
 
   return (
-    <div className="min-h-screen bg-[#f5f6f8] pb-20 lg:pb-0">
-      <SystemSidebar
-        profile={{
-          full_name:
-            profile.full_name,
+    <div className="min-h-screen bg-base-200/55 pb-20 lg:pb-0">
+      {/* =====================================================
+          SIDEBAR PERSISTENTE
+      ====================================================== */}
 
-          email:
-            profile.email,
-        }}
-        roles={roles}
+      <SystemSidebar
+        profile={
+          shellProfile
+        }
+        roles={
+          roles
+        }
       />
 
-      <div className="lg:pl-64">
-        <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-6 lg:px-8">
-          <div>
-            <p className="text-xs text-slate-400">
-              Sistema de Compras
-            </p>
+      {/* =====================================================
+          TOPBAR PERSISTENTE
+      ====================================================== */}
 
-            <p className="mt-0.5 text-sm font-medium text-slate-700">
-              {profile.full_name}
-            </p>
-          </div>
+      <SystemTopbar
+        profile={
+          shellProfile
+        }
+        roles={
+          roles
+        }
+      />
 
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#AF1B1B] text-sm font-semibold text-white">
-            {getInitials(
-              profile.full_name
-            )}
-          </div>
-        </header>
+      {/* =====================================================
+          CONTEÚDO
+      ====================================================== */}
 
-        <main className="p-5 sm:p-6 lg:p-8">
+      <div className="min-h-screen lg:pl-[272px]">
+        <main className="min-h-screen px-4 pb-8 sm:px-6 lg:px-8">
           {children}
         </main>
       </div>
     </div>
   );
-}
-
-function getInitials(
-  name: string
-) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(
-      (part) =>
-        part[0]?.toUpperCase()
-    )
-    .join("");
 }

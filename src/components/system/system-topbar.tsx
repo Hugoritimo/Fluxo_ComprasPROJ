@@ -1,77 +1,45 @@
-import { logout } from "@/app/actions/auth";
-import NotificationBell from "@/components/system/notification-bell";
-import { createClient } from "@/lib/supabase/server";
-import { LogOut, Plus, Search, UserRound } from "lucide-react";
 import Link from "next/link";
 
-type ProfileRow = {
-  full_name: string | null;
-  email: string | null;
+import {
+  ChevronRight,
+  LogOut,
+  ShieldCheck,
+} from "lucide-react";
+
+import {
+  logout,
+} from "@/app/actions/auth";
+
+import CommandMenu from "@/components/system/command-menu";
+
+import NotificationBell from "@/components/system/notification-bell";
+
+import QuickActionsMenu from "@/components/system/quick-actions-menu";
+
+// ============================================================
+// TIPOS
+// ============================================================
+
+type SystemTopbarProps = {
+  profile: {
+    full_name: string;
+    email: string;
+  };
+
+  roles: string[];
 };
 
-export default async function SystemTopbar() {
-  const supabase =
-    await createClient();
+// ============================================================
+// TOPBAR
+// ============================================================
 
-  const {
-    data: claimsData,
-  } =
-    await supabase.auth.getClaims();
-
-  const userId =
-    claimsData?.claims?.sub;
-
-  if (!userId) {
-    return null;
-  }
-
-  const [
-    profileResult,
-    rolesResult,
-  ] =
-    await Promise.all([
-      supabase
-        .from(
-          "profiles"
-        )
-        .select(
-          `
-          full_name,
-          email
-          `
-        )
-        .eq(
-          "id",
-          userId
-        )
-        .maybeSingle(),
-
-      supabase
-        .from(
-          "user_roles"
-        )
-        .select(
-          "role"
-        )
-        .eq(
-          "user_id",
-          userId
-        ),
-    ]);
-
-  const profile =
-    profileResult.data as
-      | ProfileRow
-      | null;
-
-  const roles =
-    (
-      rolesResult.data ??
-      []
-    ).map(
-      (item) =>
-        item.role
-    );
+export default function SystemTopbar({
+  profile,
+  roles,
+}: SystemTopbarProps) {
+  // =========================================================
+  // PERMISSÕES
+  // =========================================================
 
   const canFinance =
     roles.includes(
@@ -84,13 +52,29 @@ export default async function SystemTopbar() {
       "superadmin"
     );
 
+  const canAdmin =
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
+
+  const isSuperadmin =
+    roles.includes(
+      "superadmin"
+    );
+
+  // =========================================================
+  // PERFIL
+  // =========================================================
+
   const fullName =
-    profile?.full_name?.trim() ||
+    profile.full_name.trim() ||
     "Usuário";
 
   const email =
-    profile?.email?.trim() ||
-    "";
+    profile.email.trim();
 
   const initials =
     getInitials(
@@ -102,85 +86,76 @@ export default async function SystemTopbar() {
       roles
     );
 
-  const searchAction =
-    canFinance
-      ? "/financeiro/sienge"
-      : "/meus-pedidos";
+  const firstName =
+    fullName
+      .split(
+        /\s+/
+      )
+      .filter(
+        Boolean
+      )[0] ??
+    "Usuário";
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-30 h-[72px] border-b border-base-300/80 bg-base-100/90 backdrop-blur-xl lg:left-64">
-      <div className="flex h-full items-center gap-4 px-4 sm:px-6 lg:px-8">
+    <header className="fixed left-0 right-0 top-0 z-40 h-[72px] border-b border-base-300/70 bg-base-100/85 backdrop-blur-2xl lg:left-[272px]">
+      <div className="flex h-full items-center gap-3 px-4 sm:px-5 lg:px-7">
         {/* ===================================================
-            BUSCA
+            CONTEXTO
         ==================================================== */}
 
-        <div className="hidden min-w-0 flex-1 sm:block">
-          <form
-            action={
-              searchAction
-            }
-            method="get"
-            className="max-w-[520px]"
-          >
-            {canFinance && (
-              <input
-                type="hidden"
-                name="tab"
-                value="pedidos"
-              />
-            )}
+        <div className="hidden min-w-0 shrink-0 xl:block">
+          <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-base-content/30">
+            Projeta
 
-            <label className="group flex h-10 w-full items-center gap-3 rounded-xl border border-base-300 bg-base-200/45 px-3.5 transition-all focus-within:border-primary/30 focus-within:bg-base-100 focus-within:shadow-[0_0_0_4px_rgba(175,27,27,0.06)]">
-              <Search
-                size={16}
-                className="shrink-0 text-base-content/35 transition-colors group-focus-within:text-primary"
-              />
+            <ChevronRight
+              size={11}
+              strokeWidth={1.8}
+            />
 
-              <input
-                name="q"
-                type="search"
-                placeholder={
-                  canFinance
-                    ? "Buscar SC, solicitante ou centro de custo..."
-                    : "Buscar minhas solicitações..."
-                }
-                className="min-w-0 flex-1 bg-transparent text-sm text-base-content outline-none placeholder:text-base-content/35"
-              />
+            Operação
+          </div>
 
-              <span className="hidden rounded-md border border-base-300 bg-base-100 px-1.5 py-0.5 text-[9px] font-semibold text-base-content/35 xl:inline">
-                ENTER
-              </span>
-            </label>
-          </form>
+          <p className="mt-1 max-w-[180px] truncate text-[12px] font-semibold tracking-[-0.01em] text-base-content/75">
+            Olá, {firstName}
+          </p>
         </div>
 
-        {/* MOBILE BRAND */}
+        {/* ===================================================
+            COMMAND PALETTE
+        ==================================================== */}
 
-        <div className="min-w-0 flex-1 sm:hidden">
-          <p className="truncate text-sm font-bold text-base-content">
-            Projeta Compras
-          </p>
-
-          <p className="text-[10px] text-base-content/40">
-            Gestão integrada
-          </p>
+        <div className="min-w-0 flex-1">
+          <CommandMenu
+            canFinance={
+              canFinance
+            }
+            canAdmin={
+              canAdmin
+            }
+          />
         </div>
 
         {/* ===================================================
             AÇÕES
         ==================================================== */}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Link
-            href="/solicitacoes/nova"
-            className="btn btn-primary btn-sm hidden gap-2 rounded-xl shadow-sm md:inline-flex"
-          >
-            <Plus
-              size={15}
-            />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <QuickActionsMenu
+            canFinance={
+              canFinance
+            }
+            canAdmin={
+              canAdmin
+            }
+          />
 
-            Nova solicitação
-          </Link>
+          {/* =================================================
+              NOTIFICAÇÕES
+          ================================================== */}
 
           <NotificationBell />
 
@@ -188,80 +163,131 @@ export default async function SystemTopbar() {
               PERFIL
           ================================================== */}
 
-          <details className="dropdown dropdown-end">
-            <summary className="btn btn-ghost h-11 min-h-0 gap-2 rounded-xl px-2 normal-case">
-              <div className="avatar avatar-placeholder">
-                <div className="w-8 rounded-lg bg-neutral text-neutral-content">
-                  <span className="text-[10px] font-bold">
-                    {initials}
-                  </span>
-                </div>
+          <div className="dropdown dropdown-end">
+            <button
+              type="button"
+              tabIndex={0}
+              className="group flex h-10 items-center gap-2 rounded-xl px-1.5 transition hover:bg-base-200"
+            >
+              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#171717] text-[9px] font-bold text-white shadow-sm">
+                {initials}
+
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-base-100 bg-success" />
               </div>
 
-              <div className="hidden max-w-[150px] text-left xl:block">
-                <p className="truncate text-xs font-semibold leading-4 text-base-content">
+              <div className="hidden max-w-[145px] text-left 2xl:block">
+                <p className="truncate text-[11px] font-semibold leading-4 text-base-content/75">
                   {fullName}
                 </p>
 
-                <p className="truncate text-[10px] font-normal text-base-content/40">
+                <p className="truncate text-[9px] text-base-content/35">
                   {roleLabel}
                 </p>
               </div>
-            </summary>
+            </button>
 
-            <div className="dropdown-content z-[100] mt-3 w-72 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl">
-              <div className="border-b border-base-300 p-4">
+            {/* ===============================================
+                DROPDOWN
+            ================================================ */}
+
+            <div
+              tabIndex={0}
+              className="dropdown-content z-[120] mt-3 w-[290px] overflow-hidden rounded-[20px] border border-base-300 bg-base-100 shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+            >
+              {/* PERFIL */}
+
+              <div className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="avatar avatar-placeholder">
-                    <div className="w-10 rounded-xl bg-neutral text-neutral-content">
-                      <span className="text-xs font-bold">
-                        {initials}
-                      </span>
-                    </div>
+                  <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] bg-[#171717] text-[11px] font-bold text-white">
+                    {initials}
+
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-base-100 bg-success" />
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
+                    <p className="truncate text-sm font-semibold tracking-[-0.01em]">
                       {fullName}
                     </p>
 
-                    <p className="truncate text-xs text-base-content/45">
+                    <p className="mt-0.5 truncate text-[10px] text-base-content/40">
                       {email}
                     </p>
                   </div>
                 </div>
 
-                <span className="badge badge-ghost badge-sm mt-3">
-                  {roleLabel}
-                </span>
+                <div className="mt-3 flex items-center gap-2">
+                  <span
+                    className={[
+                      "badge badge-sm gap-1.5",
+                      isSuperadmin
+                        ? "badge-neutral"
+                        : canAdmin
+                          ? "badge-primary"
+                          : canFinance
+                            ? "badge-info"
+                            : "badge-ghost",
+                    ].join(
+                      " "
+                    )}
+                  >
+                    {(canAdmin ||
+                      isSuperadmin) && (
+                      <ShieldCheck
+                        size={10}
+                      />
+                    )}
+
+                    {roleLabel}
+                  </span>
+
+                  <span className="flex items-center gap-1 text-[9px] font-medium text-success">
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
+
+                    Online
+                  </span>
+                </div>
               </div>
 
-              <div className="p-2">
-                <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-base-content/55">
-                  <UserRound
-                    size={16}
-                  />
+              <div className="border-t border-base-300 p-2">
+                {canAdmin && (
+                  <Link
+                    href="/administracao/usuarios"
+                    className="flex h-10 items-center gap-3 rounded-xl px-3 text-[11px] font-medium text-base-content/65 transition hover:bg-base-200 hover:text-base-content"
+                  >
+                    <ShieldCheck
+                      size={15}
+                      className="text-base-content/35"
+                    />
 
-                  Minha conta
-                </div>
+                    Usuários e acessos
+                  </Link>
+                )}
 
                 <form
-                  action={logout}
+                  action={
+                    logout
+                  }
                 >
                   <button
                     type="submit"
-                    className="btn btn-ghost btn-sm w-full justify-start gap-3 rounded-xl font-normal text-error"
+                    className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[11px] font-semibold text-error transition hover:bg-error/5"
                   >
                     <LogOut
-                      size={16}
+                      size={15}
                     />
 
-                    Sair do sistema
+                    Encerrar sessão
                   </button>
                 </form>
               </div>
+
+              <div className="border-t border-base-300 bg-base-200/40 px-4 py-2.5">
+                <p className="text-[8px] font-medium uppercase tracking-[0.12em] text-base-content/25">
+                  Projeta Compras OS
+                </p>
+              </div>
             </div>
-          </details>
+          </div>
         </div>
       </div>
     </header>
@@ -269,7 +295,7 @@ export default async function SystemTopbar() {
 }
 
 // ============================================================
-// HELPERS
+// INICIAIS
 // ============================================================
 
 function getInitials(
@@ -278,8 +304,12 @@ function getInitials(
   const words =
     name
       .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+      .split(
+        /\s+/
+      )
+      .filter(
+        Boolean
+      );
 
   if (
     words.length ===
@@ -303,6 +333,10 @@ function getInitials(
   return `${words[0][0]}${words[words.length - 1][0]}`
     .toUpperCase();
 }
+
+// ============================================================
+// ROLE
+// ============================================================
 
 function getRoleLabel(
   roles: string[]

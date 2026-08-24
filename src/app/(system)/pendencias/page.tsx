@@ -1,43 +1,19 @@
-import type {
-  ElementType,
-} from "react";
-
-import Link from "next/link";
-
 import {
   redirect,
 } from "next/navigation";
-
-import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowRight,
-  Bell,
-  CheckCircle2,
-  Clock3,
-  PackageCheck,
-  Search,
-  TriangleAlert,
-  UserRoundX,
-} from "lucide-react";
 
 import {
   createClient,
 } from "@/lib/supabase/server";
 
 import {
-  MotionCard,
-  MotionList,
-  MotionListItem,
-  MotionPage,
-  MotionReveal,
-} from "@/components/ui/motion";
+  buildPendingSummary,
+} from "@/lib/pendencias/summary";
 
-import PageHeader from "@/components/ui/projeta/page-header";
-
-import DataPanel from "@/components/ui/projeta/data-panel";
-
-import MetricCard from "@/components/ui/projeta/metric-card";
+import PendenciasClient, {
+  type PendingEntry,
+  type PendingFilter,
+} from "@/components/pendencias/pendencias-client";
 
 // ============================================================
 // TIPOS
@@ -126,55 +102,23 @@ type NotificationRow = {
     | string
     | null;
 
-  level: string;
+  level:
+    | string
+    | null;
+
+  action_url:
+    | string
+    | null;
 
   created_at: string;
-};
 
-type PendingType =
-  | "sla"
-  | "atencao"
-  | "entrega"
-  | "usuarios"
-  | "alertas";
-
-type PendingPriority =
-  | "critical"
-  | "warning"
-  | "info";
-
-type PendingEntry = {
-  id: string;
-
-  type: PendingType;
-
-  priority: PendingPriority;
-
-  icon: ElementType;
-
-  title: string;
-
-  description: string;
-
-  meta:
+  read_at:
     | string
     | null;
-
-  secondary:
-    | string
-    | null;
-
-  value:
-    | string
-    | null;
-
-  href: string;
-
-  searchText: string;
 };
 
 // ============================================================
-// PÁGINA
+// PAGE
 // ============================================================
 
 export default async function PendenciasPage({
@@ -187,11 +131,12 @@ export default async function PendenciasPage({
     await createClient();
 
   // =========================================================
-  // AUTENTICAÇÃO
+  // AUTH
   // =========================================================
 
   const {
-    data: claimsData,
+    data:
+      claimsData,
   } =
     await supabase.auth.getClaims();
 
@@ -205,11 +150,15 @@ export default async function PendenciasPage({
   }
 
   // =========================================================
-  // PERMISSÕES
+  // ROLES
   // =========================================================
 
   const {
-    data: rolesData,
+    data:
+      rolesData,
+
+    error:
+      rolesError,
   } =
     await supabase
       .from(
@@ -223,13 +172,26 @@ export default async function PendenciasPage({
         userId
       );
 
+  if (
+    rolesError
+  ) {
+    console.error(
+      "Erro ao carregar funções:",
+      rolesError
+    );
+  }
+
   const roles =
     (
       rolesData ??
       []
     ).map(
-      (row) =>
-        row.role
+      (
+        row
+      ) =>
+        String(
+          row.role
+        )
     );
 
   const canFinance =
@@ -244,39 +206,53 @@ export default async function PendenciasPage({
     );
 
   // =========================================================
-  // FILTROS
+  // FILTRO INICIAL
   // =========================================================
 
-  const allowedTypes = [
-    "todas",
-    "sla",
-    "atencao",
-    "entrega",
-    "usuarios",
-    "alertas",
-  ];
+  const allowedTypes: PendingFilter[] =
+    [
+      "todas",
+      "criticas",
+      "atencao",
+      "sla",
+      "entrega",
+      "usuarios",
+      "alertas",
+    ];
 
-  const selectedType =
+  const requestedType =
+    params.tipo as
+      | PendingFilter
+      | undefined;
+
+  let initialType: PendingFilter =
+    requestedType &&
     allowedTypes.includes(
-      params.tipo ??
-        ""
+      requestedType
     )
-      ? params.tipo!
+      ? requestedType
       : "todas";
 
-  const search =
+  if (
+    initialType ===
+      "usuarios" &&
+    !canFinance
+  ) {
+    initialType =
+      "todas";
+  }
+
+  const initialQuery =
     (
       params.q ??
       ""
-    )
-      .trim()
-      .toLowerCase();
+    ).trim();
 
   // =========================================================
-  // CONSULTAS
+  // SLA
   // =========================================================
 
-  const slaPromise =
+  let slaQuery =
     supabase
       .from(
         "v_sienge_item_sla"
@@ -300,22 +276,58 @@ export default async function PendenciasPage({
         `
       );
 
-  const siengeUsersPromise =
-    supabase
-      .from(
-        "sienge_purchase_items"
-      )
-      .select(
-        `
-        requester_sienge_username,
-        requester_profile_id
-        `
-      )
-      .not(
-        "requester_sienge_username",
-        "is",
-        null
+  // =========================================================
+  // SEGURANÇA
+  // =========================================================
+  //
+  // Usuário comum só pode carregar suas próprias SCs,
+  // independentemente da política da view.
+  // =========================================================
+
+  if (
+    !canFinance
+  ) {
+    slaQuery =
+      slaQuery.eq(
+        "requester_profile_id",
+        userId
       );
+  }
+
+  // =========================================================
+  // USUÁRIOS SIENGE
+  // =========================================================
+
+  const siengeUsersPromise =
+    canFinance
+      ? supabase
+          .from(
+            "sienge_purchase_items"
+          )
+          .select(
+            `
+            requester_sienge_username,
+            requester_profile_id
+            `
+          )
+          .not(
+            "requester_sienge_username",
+            "is",
+            null
+          )
+      : Promise.resolve(
+          {
+            data:
+              [] as SiengeUserRow[],
+
+            error:
+              null,
+          }
+        );
+
+  // =========================================================
+  // NOTIFICAÇÕES
+  // =========================================================
 
   let notificationsQuery =
     supabase
@@ -328,7 +340,9 @@ export default async function PendenciasPage({
         title,
         message,
         level,
-        created_at
+        action_url,
+        created_at,
+        read_at
         `
       )
       .is(
@@ -348,12 +362,11 @@ export default async function PendenciasPage({
           ascending:
             false,
         }
-      )
-      .limit(
-        50
       );
 
-  if (!canFinance) {
+  if (
+    !canFinance
+  ) {
     notificationsQuery =
       notificationsQuery.eq(
         "user_id",
@@ -361,16 +374,24 @@ export default async function PendenciasPage({
       );
   }
 
+  // =========================================================
+  // EXECUTAR
+  // =========================================================
+
   const [
     slaResult,
     siengeUsersResult,
     notificationsResult,
   ] =
     await Promise.all([
-      slaPromise,
+      slaQuery,
       siengeUsersPromise,
       notificationsQuery,
     ]);
+
+  // =========================================================
+  // ERROS
+  // =========================================================
 
   if (
     slaResult.error
@@ -399,6 +420,10 @@ export default async function PendenciasPage({
     );
   }
 
+  // =========================================================
+  // DADOS
+  // =========================================================
+
   const slaRows =
     (
       slaResult.data ??
@@ -418,16 +443,32 @@ export default async function PendenciasPage({
     ) as NotificationRow[];
 
   // =========================================================
-  // SLA
-  //
-  // Uma SC pode ter vários itens vencidos.
-  // Para a Central mostramos uma pendência por SC.
+  // RESUMO CENTRALIZADO
+  // =========================================================
+
+  const summary =
+    buildPendingSummary(
+      {
+        slaRows,
+
+        siengeUsers,
+
+        notifications,
+
+        canFinance,
+      }
+    );
+
+  // =========================================================
+  // MAPAS
   // =========================================================
 
   const overdueBySc =
     createScMap(
       slaRows.filter(
-        (row) =>
+        (
+          row
+        ) =>
           row.sla_status ===
           "overdue"
       )
@@ -436,54 +477,59 @@ export default async function PendenciasPage({
   const warningBySc =
     createScMap(
       slaRows.filter(
-        (row) =>
+        (
+          row
+        ) =>
           row.sla_status ===
           "warning"
       )
     );
 
   // =========================================================
-  // PREVISÕES VENCIDAS
+  // ENTREGA VENCIDA
   // =========================================================
 
   const today =
-    startOfToday();
-
-  const overdueDeliveryRows =
-    slaRows.filter(
-      (row) => {
-        if (
-          !row.delivery_or_pickup_forecast
-        ) {
-          return false;
-        }
-
-        if (
-          row.tracking_status ===
-          "Entregue"
-        ) {
-          return false;
-        }
-
-        const forecast =
-          parseDate(
-            row.delivery_or_pickup_forecast
-          );
-
-        if (!forecast) {
-          return false;
-        }
-
-        return (
-          forecast.getTime() <
-          today.getTime()
-        );
-      }
-    );
+    getTodayIsoDate();
 
   const overdueDeliveryBySc =
     createScMap(
-      overdueDeliveryRows
+      slaRows.filter(
+        (
+          row
+        ) => {
+          if (
+            !row
+              .delivery_or_pickup_forecast
+          ) {
+            return false;
+          }
+
+          if (
+            row.tracking_status ===
+            "Entregue"
+          ) {
+            return false;
+          }
+
+          const forecast =
+            extractIsoDate(
+              row
+                .delivery_or_pickup_forecast
+            );
+
+          if (
+            !forecast
+          ) {
+            return false;
+          }
+
+          return (
+            forecast <
+            today
+          );
+        }
+      )
     );
 
   // =========================================================
@@ -496,14 +542,18 @@ export default async function PendenciasPage({
           new Set(
             siengeUsers
               .filter(
-                (row) =>
+                (
+                  row
+                ) =>
                   row
                     .requester_sienge_username &&
                   !row
                     .requester_profile_id
               )
               .map(
-                (row) =>
+                (
+                  row
+                ) =>
                   row
                     .requester_sienge_username!
                     .trim()
@@ -523,186 +573,440 @@ export default async function PendenciasPage({
       : [];
 
   // =========================================================
-  // MONTAGEM DA FILA
+  // FILA
   // =========================================================
 
   const entries: PendingEntry[] =
     [];
 
+  // =========================================================
+  // SLA VENCIDO
+  // =========================================================
+
   for (
-    const row
-    of overdueBySc.values()
+    const [
+      key,
+      row,
+    ] of overdueBySc
   ) {
     const sc =
       row.sc_number ??
-      "Sem SC";
+      key;
 
-    entries.push({
-      id:
-        `sla-${sc}`,
+    const hours =
+      numberValue(
+        row.elapsed_hours
+      );
 
-      type:
-        "sla",
+    entries.push(
+      {
+        id:
+          `sla-${key}`,
 
-      priority:
-        "critical",
+        type:
+          "sla",
 
-      icon:
-        Clock3,
+        priority:
+          "critical",
 
-      title:
-        `SC ${sc} fora do SLA`,
+        icon:
+          "clock",
 
-      description:
-        row.tracking_status
-          ? `Etapa atual: ${row.tracking_status}`
-          : "Prazo operacional ultrapassado.",
+        title:
+          `SC ${sc} fora do SLA`,
 
-      meta:
-        row.requester_sienge_username,
+        description:
+          row.insumo
+            ? row.insumo
+            : row.tracking_status
+              ? `Etapa atual: ${row.tracking_status}`
+              : "Prazo operacional ultrapassado.",
 
-      secondary:
-        row.cost_center_or_site,
-
-      value:
-        formatElapsedTime(
-          row.elapsed_hours
-        ),
-
-      href:
-        getRequestHref(
-          canFinance,
-          sc
-        ),
-
-      searchText:
-        createSearchText(
+        meta:
           row
-        ),
-    });
+            .requester_sienge_username,
+
+        secondary:
+          row
+            .cost_center_or_site,
+
+        value:
+          formatElapsedTime(
+            row.elapsed_hours
+          ),
+
+        href:
+          getRequestHref(
+            canFinance,
+            sc
+          ),
+
+        actionLabel:
+          "Abrir solicitação",
+
+        searchText:
+          createSearchText(
+            row
+          ),
+
+        urgency:
+          hours,
+
+        createdAt:
+          null,
+
+        details: [
+          {
+            label:
+              "SC",
+
+            value:
+              sc,
+          },
+
+          {
+            label:
+              "Solicitante",
+
+            value:
+              row
+                .requester_sienge_username ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Status atual",
+
+            value:
+              row
+                .tracking_status ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Centro de custo / Obra",
+
+            value:
+              row
+                .cost_center_or_site ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Tempo decorrido",
+
+            value:
+              formatElapsedTime(
+                row.elapsed_hours
+              ) ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Pedido",
+
+            value:
+              row
+                .order_number ??
+              "Ainda não informado",
+          },
+        ],
+      }
+    );
   }
 
-  for (
-    const row
-    of warningBySc.values()
-  ) {
-    const sc =
-      row.sc_number ??
-      "Sem SC";
+  // =========================================================
+  // SLA ATENÇÃO
+  // =========================================================
 
-    /*
-     * Se a mesma SC já estiver vencida,
-     * não exibimos novamente como atenção.
-     */
+  for (
+    const [
+      key,
+      row,
+    ] of warningBySc
+  ) {
     if (
       overdueBySc.has(
-        sc
+        key
       )
     ) {
       continue;
     }
 
-    entries.push({
-      id:
-        `warning-${sc}`,
+    const sc =
+      row.sc_number ??
+      key;
 
-      type:
-        "atencao",
+    entries.push(
+      {
+        id:
+          `warning-${key}`,
 
-      priority:
-        "warning",
+        type:
+          "atencao",
 
-      icon:
-        TriangleAlert,
+        priority:
+          "warning",
 
-      title:
-        `SC ${sc} próxima do limite`,
+        icon:
+          "warning",
 
-      description:
-        row.tracking_status
-          ? `Etapa atual: ${row.tracking_status}`
-          : "Prazo próximo do limite definido.",
+        title:
+          `SC ${sc} próxima do limite`,
 
-      meta:
-        row.requester_sienge_username,
+        description:
+          row.insumo
+            ? row.insumo
+            : row.tracking_status
+              ? `Etapa atual: ${row.tracking_status}`
+              : "Prazo próximo do limite operacional.",
 
-      secondary:
-        row.cost_center_or_site,
-
-      value:
-        formatElapsedTime(
-          row.elapsed_hours
-        ),
-
-      href:
-        getRequestHref(
-          canFinance,
-          sc
-        ),
-
-      searchText:
-        createSearchText(
+        meta:
           row
-        ),
-    });
+            .requester_sienge_username,
+
+        secondary:
+          row
+            .cost_center_or_site,
+
+        value:
+          formatElapsedTime(
+            row.elapsed_hours
+          ),
+
+        href:
+          getRequestHref(
+            canFinance,
+            sc
+          ),
+
+        actionLabel:
+          "Abrir solicitação",
+
+        searchText:
+          createSearchText(
+            row
+          ),
+
+        urgency:
+          numberValue(
+            row.elapsed_hours
+          ),
+
+        createdAt:
+          null,
+
+        details: [
+          {
+            label:
+              "SC",
+
+            value:
+              sc,
+          },
+
+          {
+            label:
+              "Solicitante",
+
+            value:
+              row
+                .requester_sienge_username ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Status atual",
+
+            value:
+              row
+                .tracking_status ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Centro de custo / Obra",
+
+            value:
+              row
+                .cost_center_or_site ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Tempo decorrido",
+
+            value:
+              formatElapsedTime(
+                row.elapsed_hours
+              ) ??
+              "Não informado",
+          },
+        ],
+      }
+    );
   }
 
+  // =========================================================
+  // ENTREGA VENCIDA
+  // =========================================================
+
   for (
-    const row
-    of overdueDeliveryBySc.values()
+    const [
+      key,
+      row,
+    ] of overdueDeliveryBySc
   ) {
     const sc =
       row.sc_number ??
-      "Sem SC";
+      key;
 
-    entries.push({
-      id:
-        `delivery-${sc}`,
+    const delayDays =
+      getDelayDays(
+        row
+          .delivery_or_pickup_forecast,
+        today
+      );
 
-      type:
-        "entrega",
+    entries.push(
+      {
+        id:
+          `delivery-${key}`,
 
-      priority:
-        "critical",
+        type:
+          "entrega",
 
-      icon:
-        PackageCheck,
+        priority:
+          "critical",
 
-      title:
-        `Entrega da SC ${sc} vencida`,
+        icon:
+          "delivery",
 
-      description:
-        row.delivery_or_pickup_forecast
-          ? `Previsão: ${formatDate(
-              row.delivery_or_pickup_forecast
-            )}`
-          : "Previsão de entrega ultrapassada.",
+        title:
+          `Entrega da SC ${sc} vencida`,
 
-      meta:
-        row.supplier_name,
+        description:
+          row.supplier_name
+            ? `Fornecedor: ${row.supplier_name}`
+            : "Previsão de entrega ou retirada ultrapassada.",
 
-      secondary:
-        row.order_number
-          ? `Pedido ${row.order_number}`
-          : row.requester_sienge_username,
-
-      value:
-        getDelayLabel(
-          row.delivery_or_pickup_forecast
-        ),
-
-      href:
-        getRequestHref(
-          canFinance,
-          sc
-        ),
-
-      searchText:
-        createSearchText(
+        meta:
           row
-        ),
-    });
+            .requester_sienge_username,
+
+        secondary:
+          row.order_number
+            ? `Pedido ${row.order_number}`
+            : row
+                .cost_center_or_site,
+
+        value:
+          delayDays >
+          0
+            ? delayDays ===
+              1
+              ? "1 dia"
+              : `${delayDays} dias`
+            : null,
+
+        href:
+          getRequestHref(
+            canFinance,
+            sc
+          ),
+
+        actionLabel:
+          "Abrir solicitação",
+
+        searchText:
+          createSearchText(
+            row
+          ),
+
+        urgency:
+          delayDays *
+          24,
+
+        createdAt:
+          null,
+
+        details: [
+          {
+            label:
+              "SC",
+
+            value:
+              sc,
+          },
+
+          {
+            label:
+              "Fornecedor",
+
+            value:
+              row
+                .supplier_name ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Pedido",
+
+            value:
+              row
+                .order_number ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Previsão",
+
+            value:
+              row
+                .delivery_or_pickup_forecast
+                ? formatDate(
+                    row
+                      .delivery_or_pickup_forecast
+                  )
+                : "Não informada",
+          },
+
+          {
+            label:
+              "Status atual",
+
+            value:
+              row
+                .tracking_status ??
+              "Não informado",
+          },
+
+          {
+            label:
+              "Status da entrega",
+
+            value:
+              row
+                .delivery_status ??
+              "Não informado",
+          },
+        ],
+      }
+    );
   }
+
+  // =========================================================
+  // USUÁRIOS SEM VÍNCULO
+  // =========================================================
 
   if (
     canFinance
@@ -711,102 +1015,206 @@ export default async function PendenciasPage({
       const username
       of unmatchedUsers
     ) {
-      entries.push({
-        id:
-          `user-${username}`,
+      entries.push(
+        {
+          id:
+            `user-${username}`,
 
-        type:
-          "usuarios",
+          type:
+            "usuarios",
 
-        priority:
-          "warning",
+          priority:
+            "warning",
 
-        icon:
-          UserRoundX,
+          icon:
+            "user",
 
-        title:
-          `${username} sem vínculo`,
+          title:
+            `${username} sem vínculo`,
 
-        description:
-          "Usuário identificado no arquivo do Sienge ainda não está relacionado a um colaborador.",
+          description:
+            "Usuário identificado no Sienge ainda não está relacionado a um colaborador do sistema.",
 
-        meta:
-          "Sienge",
+          meta:
+            "Integração Sienge",
 
-        secondary:
-          null,
+          secondary:
+            null,
 
-        value:
-          "Vincular",
+          value:
+            "Vincular",
 
-        href:
-          `/financeiro/sienge?tab=usuarios&q=${encodeURIComponent(
-            username
-          )}`,
+          href:
+            `/financeiro/sienge?tab=usuarios&q=${encodeURIComponent(
+              username
+            )}`,
 
-        searchText:
-          username.toLowerCase(),
-      });
+          actionLabel:
+            "Vincular usuário",
+
+          searchText:
+            normalizeSearch(
+              `${username} sienge usuário`
+            ),
+
+          urgency:
+            0,
+
+          createdAt:
+            null,
+
+          details: [
+            {
+              label:
+                "Usuário Sienge",
+
+              value:
+                username,
+            },
+
+            {
+              label:
+                "Situação",
+
+              value:
+                "Sem colaborador associado",
+            },
+
+            {
+              label:
+                "Origem",
+
+              value:
+                "Importação Sienge",
+            },
+          ],
+        }
+      );
     }
   }
+
+  // =========================================================
+  // ALERTAS
+  // =========================================================
 
   for (
     const notification
     of notifications
   ) {
-    entries.push({
-      id:
-        `alert-${notification.id}`,
+    const critical =
+      notification.level ===
+      "error";
 
-      type:
-        "alertas",
+    const href =
+      notification.action_url &&
+      notification.action_url.startsWith(
+        "/"
+      )
+        ? notification.action_url
+        : "/notificacoes?filtro=nao-lidas";
 
-      priority:
-        notification.level ===
-        "error"
-          ? "critical"
-          : "warning",
+    entries.push(
+      {
+        id:
+          `alert-${notification.id}`,
 
-      icon:
-        Bell,
+        type:
+          "alertas",
 
-      title:
-        notification.title,
+        priority:
+          critical
+            ? "critical"
+            : "warning",
 
-      description:
-        notification.message ??
-        "Alerta operacional não lido.",
+        icon:
+          "bell",
 
-      meta:
-        "Notificação",
+        title:
+          notification.title,
 
-      secondary:
-        formatDateTime(
-          notification.created_at
-        ),
+        description:
+          notification.message ??
+          "Alerta operacional não lido.",
 
-      value:
-        notification.level ===
-        "error"
-          ? "Crítico"
-          : "Atenção",
+        meta:
+          "Notificação",
 
-      href:
-        "/notificacoes?filtro=nao-lidas",
+        secondary:
+          formatDateTime(
+            notification.created_at
+          ),
 
-      searchText:
-        `${notification.title} ${notification.message ?? ""}`.toLowerCase(),
-    });
+        value:
+          critical
+            ? "Crítico"
+            : "Atenção",
+
+        href,
+
+        actionLabel:
+          "Abrir atualização",
+
+        searchText:
+          normalizeSearch(
+            [
+              notification.title,
+              notification.message,
+              notification.level,
+            ]
+              .filter(
+                Boolean
+              )
+              .join(
+                " "
+              )
+          ),
+
+        urgency:
+          critical
+            ? 10000
+            : 1000,
+
+        createdAt:
+          notification.created_at,
+
+        details: [
+          {
+            label:
+              "Nível",
+
+            value:
+              critical
+                ? "Crítico"
+                : "Atenção",
+          },
+
+          {
+            label:
+              "Registrado em",
+
+            value:
+              formatDateTime(
+                notification.created_at
+              ),
+          },
+
+          {
+            label:
+              "Situação",
+
+            value:
+              "Não lido",
+          },
+        ],
+      }
+    );
   }
 
   // =========================================================
   // ORDENAÇÃO
   // =========================================================
 
-  const priorityWeight: Record<
-    PendingPriority,
-    number
-  > = {
+  const priorityWeight = {
     critical:
       0,
 
@@ -821,711 +1229,66 @@ export default async function PendenciasPage({
     (
       a,
       b
-    ) =>
-      priorityWeight[
-        a.priority
-      ] -
-      priorityWeight[
-        b.priority
-      ]
+    ) => {
+      const priorityDifference =
+        priorityWeight[
+          a.priority
+        ] -
+        priorityWeight[
+          b.priority
+        ];
+
+      if (
+        priorityDifference !==
+        0
+      ) {
+        return priorityDifference;
+      }
+
+      if (
+        a.urgency !==
+        b.urgency
+      ) {
+        return (
+          b.urgency -
+          a.urgency
+        );
+      }
+
+      return a.title.localeCompare(
+        b.title,
+        "pt-BR"
+      );
+    }
   );
 
   // =========================================================
-  // FILTRAGEM
-  // =========================================================
-
-  const filteredEntries =
-    entries.filter(
-      (entry) => {
-        if (
-          selectedType !==
-            "todas" &&
-          entry.type !==
-            selectedType
-        ) {
-          return false;
-        }
-
-        if (
-          search &&
-          !entry.searchText.includes(
-            search
-          ) &&
-          !entry.title
-            .toLowerCase()
-            .includes(
-              search
-            ) &&
-          !entry.description
-            .toLowerCase()
-            .includes(
-              search
-            )
-        ) {
-          return false;
-        }
-
-        return true;
-      }
-    );
-
-  // =========================================================
-  // CONTADORES
-  // =========================================================
-
-  const overdueCount =
-    entries.filter(
-      (entry) =>
-        entry.type ===
-        "sla"
-    ).length;
-
-  const warningCount =
-    entries.filter(
-      (entry) =>
-        entry.type ===
-        "atencao"
-    ).length;
-
-  const deliveryCount =
-    entries.filter(
-      (entry) =>
-        entry.type ===
-        "entrega"
-    ).length;
-
-  const unmatchedCount =
-    entries.filter(
-      (entry) =>
-        entry.type ===
-        "usuarios"
-    ).length;
-
-  const alertsCount =
-    entries.filter(
-      (entry) =>
-        entry.type ===
-        "alertas"
-    ).length;
-
-  const criticalCount =
-    entries.filter(
-      (entry) =>
-        entry.priority ===
-        "critical"
-    ).length;
-
-  // =========================================================
-  // TELA
+  // RENDER
   // =========================================================
 
   return (
-    <MotionPage className="mx-auto max-w-[1580px]">
-      {/* =====================================================
-          HEADER
-      ====================================================== */}
-
-      <MotionReveal>
-        <PageHeader
-          eyebrow="Operação"
-          title="Central de Pendências"
-          description="Tudo que precisa de ação reunido em uma única fila operacional."
-          actions={
-            criticalCount >
-            0 ? (
-              <div className="flex items-center gap-2 rounded-xl border border-error/15 bg-error/[0.04] px-3 py-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-error opacity-30" />
-
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-error" />
-                </span>
-
-                <span className="text-xs font-semibold text-error">
-                  {
-                    criticalCount
-                  }{" "}
-                  crítico
-                  {criticalCount ===
-                  1
-                    ? ""
-                    : "s"}
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-xl border border-success/15 bg-success/[0.04] px-3 py-2">
-                <CheckCircle2
-                  size={15}
-                  className="text-success"
-                />
-
-                <span className="text-xs font-semibold text-success">
-                  Sem itens críticos
-                </span>
-              </div>
-            )
-          }
-        />
-      </MotionReveal>
-
-      {/* =====================================================
-          RESUMO
-      ====================================================== */}
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MotionCard
-          delay={0.04}
-        >
-          <MetricCard
-            icon={
-              AlertCircle
-            }
-            label="Total"
-            value={
-              entries.length
-            }
-            description="Ocorrências que exigem acompanhamento"
-            variant={
-              entries.length >
-              0
-                ? "primary"
-                : "success"
-            }
-          />
-        </MotionCard>
-
-        <MotionCard
-          delay={0.08}
-        >
-          <MetricCard
-            icon={
-              Clock3
-            }
-            label="Fora do SLA"
-            value={
-              overdueCount
-            }
-            description="Prazo operacional ultrapassado"
-            variant={
-              overdueCount >
-              0
-                ? "error"
-                : "success"
-            }
-          />
-        </MotionCard>
-
-        <MotionCard
-          delay={0.12}
-        >
-          <MetricCard
-            icon={
-              PackageCheck
-            }
-            label="Entrega vencida"
-            value={
-              deliveryCount
-            }
-            description="Previsão já ultrapassada"
-            variant={
-              deliveryCount >
-              0
-                ? "error"
-                : "success"
-            }
-          />
-        </MotionCard>
-
-        <MotionCard
-          delay={0.16}
-        >
-          <MetricCard
-            icon={
-              TriangleAlert
-            }
-            label="Em atenção"
-            value={
-              warningCount
-            }
-            description="Próximos do limite"
-            variant={
-              warningCount >
-              0
-                ? "warning"
-                : "neutral"
-            }
-          />
-        </MotionCard>
-
-        <MotionCard
-          delay={0.2}
-        >
-          <MetricCard
-            icon={
-              UserRoundX
-            }
-            label={
-              canFinance
-                ? "Sem vínculo"
-                : "Alertas"
-            }
-            value={
-              canFinance
-                ? unmatchedCount
-                : alertsCount
-            }
-            description={
-              canFinance
-                ? "Usuários Sienge pendentes"
-                : "Notificações importantes"
-            }
-            variant={
-              (
-                canFinance
-                  ? unmatchedCount
-                  : alertsCount
-              ) >
-              0
-                ? "warning"
-                : "neutral"
-            }
-          />
-        </MotionCard>
-      </div>
-
-      {/* =====================================================
-          BARRA DE FILTROS
-      ====================================================== */}
-
-      <MotionReveal
-        delay={0.14}
-      >
-        <div className="mb-6 rounded-[20px] border border-base-300/80 bg-base-100 p-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            {/* BUSCA */}
-
-            <form
-              method="get"
-              action="/pendencias"
-              className="flex min-w-0 flex-1 gap-2"
-            >
-              {selectedType !==
-                "todas" && (
-                <input
-                  type="hidden"
-                  name="tipo"
-                  value={
-                    selectedType
-                  }
-                />
-              )}
-
-              <label className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-base-300 bg-base-200/30 px-3 focus-within:border-primary/30 focus-within:bg-base-100">
-                <Search
-                  size={15}
-                  className="shrink-0 text-base-content/30"
-                />
-
-                <input
-                  type="search"
-                  name="q"
-                  defaultValue={
-                    params.q ??
-                    ""
-                  }
-                  placeholder="Buscar SC, solicitante, fornecedor, pedido..."
-                  className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-base-content/30"
-                />
-              </label>
-
-              <button
-                type="submit"
-                className="btn btn-neutral btn-sm h-10 rounded-xl px-4"
-              >
-                Buscar
-              </button>
-            </form>
-
-            {/* FILTROS */}
-
-            <div className="flex gap-1 overflow-x-auto rounded-xl bg-base-200/50 p-1">
-              <FilterTab
-                active={
-                  selectedType ===
-                  "todas"
-                }
-                href={
-                  createFilterHref(
-                    "todas",
-                    params.q
-                  )
-                }
-                label="Todas"
-                count={
-                  entries.length
-                }
-              />
-
-              <FilterTab
-                active={
-                  selectedType ===
-                  "sla"
-                }
-                href={
-                  createFilterHref(
-                    "sla",
-                    params.q
-                  )
-                }
-                label="SLA"
-                count={
-                  overdueCount
-                }
-              />
-
-              <FilterTab
-                active={
-                  selectedType ===
-                  "entrega"
-                }
-                href={
-                  createFilterHref(
-                    "entrega",
-                    params.q
-                  )
-                }
-                label="Entregas"
-                count={
-                  deliveryCount
-                }
-              />
-
-              <FilterTab
-                active={
-                  selectedType ===
-                  "atencao"
-                }
-                href={
-                  createFilterHref(
-                    "atencao",
-                    params.q
-                  )
-                }
-                label="Atenção"
-                count={
-                  warningCount
-                }
-              />
-
-              {canFinance && (
-                <FilterTab
-                  active={
-                    selectedType ===
-                    "usuarios"
-                  }
-                  href={
-                    createFilterHref(
-                      "usuarios",
-                      params.q
-                    )
-                  }
-                  label="Usuários"
-                  count={
-                    unmatchedCount
-                  }
-                />
-              )}
-
-              <FilterTab
-                active={
-                  selectedType ===
-                  "alertas"
-                }
-                href={
-                  createFilterHref(
-                    "alertas",
-                    params.q
-                  )
-                }
-                label="Alertas"
-                count={
-                  alertsCount
-                }
-              />
-            </div>
-          </div>
-        </div>
-      </MotionReveal>
-
-      {/* =====================================================
-          FILA
-      ====================================================== */}
-
-      <MotionReveal
-        delay={0.18}
-      >
-        <DataPanel
-          eyebrow="Minha fila"
-          title="Pendências que exigem ação"
-          description={
-            search
-              ? `${filteredEntries.length} resultado(s) para a busca atual.`
-              : `${filteredEntries.length} ocorrência(s) nesta visualização.`
-          }
-        >
-          {filteredEntries.length ===
-          0 ? (
-            <div className="flex min-h-[380px] flex-col items-center justify-center p-8 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-success/10 text-success">
-                <CheckCircle2
-                  size={27}
-                />
-              </div>
-
-              <h3 className="mt-5 text-base font-semibold">
-                Nenhuma pendência encontrada
-              </h3>
-
-              <p className="mt-2 max-w-sm text-xs leading-5 text-base-content/40">
-                {search
-                  ? "Não existem registros que correspondam aos filtros aplicados."
-                  : "A operação está em dia para esta categoria."}
-              </p>
-
-              {(
-                search ||
-                selectedType !==
-                  "todas"
-              ) && (
-                <Link
-                  href="/pendencias"
-                  className="btn btn-ghost btn-sm mt-5 rounded-xl"
-                >
-                  Limpar filtros
-                </Link>
-              )}
-            </div>
-          ) : (
-            <MotionList className="divide-y divide-base-300/70">
-              {filteredEntries.map(
-                (
-                  entry
-                ) => (
-                  <MotionListItem
-                    key={
-                      entry.id
-                    }
-                  >
-                    <PendingRow
-                      entry={
-                        entry
-                      }
-                    />
-                  </MotionListItem>
-                )
-              )}
-            </MotionList>
-          )}
-        </DataPanel>
-      </MotionReveal>
-    </MotionPage>
+    <PendenciasClient
+      entries={
+        entries
+      }
+      summary={
+        summary
+      }
+      canFinance={
+        canFinance
+      }
+      initialType={
+        initialType
+      }
+      initialQuery={
+        initialQuery
+      }
+    />
   );
 }
 
 // ============================================================
-// LINHA DA PENDÊNCIA
-// ============================================================
-
-function PendingRow({
-  entry,
-}: {
-  entry: PendingEntry;
-}) {
-  const Icon =
-    entry.icon;
-
-  const style =
-    entry.priority ===
-    "critical"
-      ? {
-          icon:
-            "bg-error/10 text-error",
-
-          badge:
-            "badge-error",
-
-          indicator:
-            "bg-error",
-        }
-      : entry.priority ===
-          "warning"
-        ? {
-            icon:
-              "bg-warning/10 text-warning",
-
-            badge:
-              "badge-warning",
-
-            indicator:
-              "bg-warning",
-          }
-        : {
-            icon:
-              "bg-info/10 text-info",
-
-            badge:
-              "badge-info",
-
-            indicator:
-              "bg-info",
-          };
-
-  return (
-    <Link
-      href={
-        entry.href
-      }
-      className="group relative flex gap-4 px-5 py-5 transition-colors hover:bg-base-200/40 sm:px-6"
-    >
-      <span
-        className={[
-          "absolute bottom-4 left-0 top-4 w-[3px] rounded-r-full opacity-70",
-          style.indicator,
-        ].join(" ")}
-      />
-
-      <div
-        className={[
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]",
-          style.icon,
-        ].join(" ")}
-      >
-        <Icon
-          size={18}
-        />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-base-content/80">
-                {
-                  entry.title
-                }
-              </p>
-
-              <span
-                className={[
-                  "badge badge-sm",
-                  style.badge,
-                ].join(" ")}
-              >
-                {getTypeLabel(
-                  entry.type
-                )}
-              </span>
-            </div>
-
-            <p className="mt-1.5 text-[11px] leading-5 text-base-content/45">
-              {
-                entry.description
-              }
-            </p>
-
-            {(
-              entry.meta ||
-              entry.secondary
-            ) && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-base-content/35">
-                {entry.meta && (
-                  <span>
-                    {
-                      entry.meta
-                    }
-                  </span>
-                )}
-
-                {entry.secondary && (
-                  <span>
-                    {
-                      entry.secondary
-                    }
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3 sm:pl-5">
-            {entry.value && (
-              <span className="text-xs font-semibold tabular-nums text-base-content/50">
-                {
-                  entry.value
-                }
-              </span>
-            )}
-
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg text-base-content/20 transition-all group-hover:bg-base-200 group-hover:text-primary">
-              <ArrowRight
-                size={15}
-                className="transition-transform group-hover:translate-x-0.5"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-// ============================================================
-// FILTRO
-// ============================================================
-
-function FilterTab({
-  active,
-  href,
-  label,
-  count,
-}: {
-  active: boolean;
-
-  href: string;
-
-  label: string;
-
-  count: number;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      className={[
-        "flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition",
-        active
-          ? "bg-base-100 text-base-content shadow-sm"
-          : "text-base-content/40 hover:text-base-content/70",
-      ].join(" ")}
-    >
-      {label}
-
-      <span
-        className={[
-          "flex min-w-5 items-center justify-center rounded-md px-1.5 py-0.5 text-[8px] font-bold",
-          active
-            ? "bg-primary/10 text-primary"
-            : "bg-base-300/70 text-base-content/35",
-        ].join(" ")}
-      >
-        {count}
-      </span>
-    </Link>
-  );
-}
-
-// ============================================================
-// MAPA POR SC
+// SC MAP
 // ============================================================
 
 function createScMap(
@@ -1562,15 +1325,13 @@ function createScMap(
     }
 
     const currentHours =
-      Number(
-        current.elapsed_hours ??
-          0
+      numberValue(
+        current.elapsed_hours
       );
 
     const newHours =
-      Number(
-        row.elapsed_hours ??
-          0
+      numberValue(
+        row.elapsed_hours
       );
 
     if (
@@ -1588,7 +1349,7 @@ function createScMap(
 }
 
 // ============================================================
-// LINK DA SC
+// HREF
 // ============================================================
 
 function getRequestHref(
@@ -1606,163 +1367,188 @@ function getRequestHref(
 }
 
 // ============================================================
-// BUSCA
+// SEARCH
 // ============================================================
 
 function createSearchText(
   row: SlaRow
 ) {
-  return [
-    row.sc_number,
-    row.insumo,
-    row.requester_sienge_username,
-    row.cost_center_or_site,
-    row.order_number,
-    row.supplier_name,
-    row.tracking_status,
-  ]
-    .filter(
-      Boolean
-    )
-    .join(
-      " "
-    )
-    .toLowerCase();
+  return normalizeSearch(
+    [
+      row.sc_number,
+      row.insumo,
+      row
+        .requester_sienge_username,
+      row
+        .cost_center_or_site,
+      row.order_number,
+      row.supplier_name,
+      row.tracking_status,
+      row.delivery_status,
+    ]
+      .filter(
+        Boolean
+      )
+      .join(
+        " "
+      )
+  );
 }
 
-// ============================================================
-// FILTROS
-// ============================================================
-
-function createFilterHref(
-  type: string,
-  query:
-    | string
-    | undefined
-) {
-  const params =
-    new URLSearchParams();
-
-  if (
-    type !==
-    "todas"
-  ) {
-    params.set(
-      "tipo",
-      type
-    );
-  }
-
-  if (
-    query?.trim()
-  ) {
-    params.set(
-      "q",
-      query.trim()
-    );
-  }
-
-  const result =
-    params.toString();
-
-  return result
-    ? `/pendencias?${result}`
-    : "/pendencias";
-}
-
-// ============================================================
-// LABEL
-// ============================================================
-
-function getTypeLabel(
-  type: PendingType
-) {
-  switch (
-    type
-  ) {
-    case "sla":
-      return "SLA vencido";
-
-    case "atencao":
-      return "SLA";
-
-    case "entrega":
-      return "Entrega";
-
-    case "usuarios":
-      return "Usuário";
-
-    case "alertas":
-      return "Alerta";
-  }
-}
-
-// ============================================================
-// DATAS
-// ============================================================
-
-function parseDate(
+function normalizeSearch(
   value: string
 ) {
-  const date =
-    new Date(
-      `${value.slice(
-        0,
-        10
-      )}T12:00:00`
-    );
-
-  return Number.isNaN(
-    date.getTime()
-  )
-    ? null
-    : date;
+  return value
+    .normalize(
+      "NFD"
+    )
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .toLowerCase()
+    .trim();
 }
 
-function startOfToday() {
-  const date =
-    new Date();
+// ============================================================
+// DATE BUSINESS RULE
+// ============================================================
 
-  date.setHours(
-    0,
-    0,
-    0,
-    0
+function getTodayIsoDate() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "America/Sao_Paulo",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+  const year =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "year"
+    )?.value;
+
+  const month =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "month"
+    )?.value;
+
+  const day =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "day"
+    )?.value;
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return new Date()
+      .toISOString()
+      .slice(
+        0,
+        10
+      );
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+// ============================================================
+// DATE HELPERS
+// ============================================================
+
+function extractIsoDate(
+  value: string
+) {
+  return (
+    value.match(
+      /^\d{4}-\d{2}-\d{2}/
+    )?.[0] ??
+    null
   );
-
-  return date;
 }
 
 function formatDate(
   value: string
 ) {
-  const date =
-    parseDate(
+  const iso =
+    extractIsoDate(
       value
     );
 
-  if (!date) {
+  if (
+    !iso
+  ) {
     return value;
   }
 
-  return new Intl.DateTimeFormat(
-    "pt-BR"
-  ).format(
-    date
-  );
+  const [
+    year,
+    month,
+    day,
+  ] =
+    iso.split(
+      "-"
+    );
+
+  return `${day}/${month}/${year}`;
 }
 
 function formatDateTime(
   value: string
 ) {
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return value;
+  }
+
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
+      timeZone:
+        "America/Sao_Paulo",
+
       day:
         "2-digit",
 
       month:
         "2-digit",
+
+      year:
+        "numeric",
 
       hour:
         "2-digit",
@@ -1771,14 +1557,64 @@ function formatDateTime(
         "2-digit",
     }
   ).format(
-    new Date(
-      value
-    )
+    date
   );
 }
 
 // ============================================================
-// TEMPO SLA
+// DELAY
+// ============================================================
+
+function getDelayDays(
+  value:
+    | string
+    | null,
+  today: string
+) {
+  if (
+    !value
+  ) {
+    return 0;
+  }
+
+  const forecast =
+    extractIsoDate(
+      value
+    );
+
+  if (
+    !forecast
+  ) {
+    return 0;
+  }
+
+  const forecastDate =
+    new Date(
+      `${forecast}T12:00:00Z`
+    );
+
+  const todayDate =
+    new Date(
+      `${today}T12:00:00Z`
+    );
+
+  const difference =
+    Math.floor(
+      (
+        todayDate.getTime() -
+        forecastDate.getTime()
+      ) /
+        86400000
+    );
+
+  return Math.max(
+    0,
+    difference
+  );
+}
+
+// ============================================================
+// SLA TIME
 // ============================================================
 
 function formatElapsedTime(
@@ -1788,17 +1624,15 @@ function formatElapsedTime(
     | null
 ) {
   const hours =
-    Number(
-      value ??
-        0
+    numberValue(
+      value
     );
 
   if (
-    !Number.isFinite(
-      hours
-    )
+    hours <=
+    0
   ) {
-    return null;
+    return "0h";
   }
 
   if (
@@ -1822,49 +1656,21 @@ function formatElapsedTime(
   )} dias`;
 }
 
-// ============================================================
-// ATRASO DE ENTREGA
-// ============================================================
-
-function getDelayLabel(
+function numberValue(
   value:
     | string
+    | number
     | null
 ) {
-  if (!value) {
-    return null;
-  }
-
-  const forecast =
-    parseDate(
-      value
+  const result =
+    Number(
+      value ??
+      0
     );
 
-  if (!forecast) {
-    return null;
-  }
-
-  const today =
-    startOfToday();
-
-  const difference =
-    Math.floor(
-      (
-        today.getTime() -
-        forecast.getTime()
-      ) /
-        86400000
-    );
-
-  if (
-    difference <=
-    0
-  ) {
-    return null;
-  }
-
-  return difference ===
-    1
-    ? "1 dia"
-    : `${difference} dias`;
+  return Number.isFinite(
+    result
+  )
+    ? result
+    : 0;
 }

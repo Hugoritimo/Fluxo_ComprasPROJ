@@ -18,6 +18,7 @@ import {
 
 import {
   AlertTriangle,
+  CheckCircle2,
   CreditCard,
   FileCheck2,
   FileSpreadsheet,
@@ -49,10 +50,19 @@ type SystemSidebarProps = {
   roles: string[];
 };
 
+type PendingStatus =
+  | "healthy"
+  | "attention"
+  | "critical";
+
 type PendingCountResponse = {
   total: number;
 
   critical: number;
+
+  attention: number;
+
+  status: PendingStatus;
 
   categories: {
     sla: number;
@@ -64,7 +74,13 @@ type PendingCountResponse = {
     unmatched: number;
 
     alerts: number;
+
+    alertWarnings: number;
+
+    alertErrors: number;
   };
+
+  generatedAt: string;
 };
 
 // ============================================================
@@ -79,7 +95,7 @@ export default function SystemSidebar({
     usePathname();
 
   // =========================================================
-  // ESTADO DE PENDÊNCIAS
+  // PENDÊNCIAS
   // =========================================================
 
   const [
@@ -96,6 +112,22 @@ export default function SystemSidebar({
   ] =
     useState(
       0
+    );
+
+  const [
+    attentionCount,
+    setAttentionCount,
+  ] =
+    useState(
+      0
+    );
+
+  const [
+    pendingStatus,
+    setPendingStatus,
+  ] =
+    useState<PendingStatus>(
+      "healthy"
     );
 
   const [
@@ -130,7 +162,7 @@ export default function SystemSidebar({
     );
 
   // =========================================================
-  // CARREGAR CONTADOR
+  // CARREGAR RESUMO
   // =========================================================
 
   const loadPendingCount =
@@ -146,12 +178,22 @@ export default function SystemSidebar({
 
                 cache:
                   "no-store",
+
+                headers: {
+                  Accept:
+                    "application/json",
+                },
               }
             );
 
           if (
             !response.ok
           ) {
+            console.error(
+              "Falha ao carregar contador de pendências:",
+              response.status
+            );
+
             return;
           }
 
@@ -173,6 +215,18 @@ export default function SystemSidebar({
                 0
             )
           );
+
+          setAttentionCount(
+            Number(
+              data.attention ??
+                0
+            )
+          );
+
+          setPendingStatus(
+            data.status ??
+              "healthy"
+          );
         } catch (
           error
         ) {
@@ -192,6 +246,21 @@ export default function SystemSidebar({
   // =========================================================
   // ATUALIZAÇÃO AUTOMÁTICA
   // =========================================================
+  //
+  // IMPORTANTE:
+  //
+  // Não depende mais do pathname.
+  //
+  // Antes:
+  // trocar qualquer página => refazer consulta pesada.
+  //
+  // Agora:
+  // - carrega uma vez ao montar;
+  // - atualiza a cada 2 minutos;
+  // - atualiza ao retornar para a aba;
+  // - atualiza sob demanda através do evento:
+  //   "projeta:pending-refresh".
+  // =========================================================
 
   useEffect(
     () => {
@@ -202,7 +271,7 @@ export default function SystemSidebar({
           () => {
             void loadPendingCount();
           },
-          60000
+          120000
         );
 
       const handleFocus =
@@ -210,9 +279,34 @@ export default function SystemSidebar({
           void loadPendingCount();
         };
 
+      const handleVisibilityChange =
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void loadPendingCount();
+          }
+        };
+
+      const handlePendingRefresh =
+        () => {
+          void loadPendingCount();
+        };
+
       window.addEventListener(
         "focus",
         handleFocus
+      );
+
+      document.addEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+
+      window.addEventListener(
+        "projeta:pending-refresh",
+        handlePendingRefresh
       );
 
       return () => {
@@ -224,11 +318,20 @@ export default function SystemSidebar({
           "focus",
           handleFocus
         );
+
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange
+        );
+
+        window.removeEventListener(
+          "projeta:pending-refresh",
+          handlePendingRefresh
+        );
       };
     },
     [
       loadPendingCount,
-      pathname,
     ]
   );
 
@@ -313,8 +416,6 @@ export default function SystemSidebar({
 
   // =========================================================
   // MOBILE
-  //
-  // Agora temos Pendências também na navegação inferior.
   // =========================================================
 
   const mobileColumns =
@@ -330,11 +431,13 @@ export default function SystemSidebar({
     active: boolean
   ) {
     return [
-      "group relative flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-200",
+      "group relative flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-[550] transition-all duration-200",
       active
         ? "bg-white/[0.09] text-white"
         : "text-white/45 hover:bg-white/[0.055] hover:text-white/90",
-    ].join(" ");
+    ].join(
+      " "
+    );
   }
 
   function iconClass(
@@ -345,18 +448,22 @@ export default function SystemSidebar({
       active
         ? "bg-primary text-primary-content shadow-sm"
         : "text-white/40 group-hover:bg-white/[0.06] group-hover:text-white/80",
-    ].join(" ");
+    ].join(
+      " "
+    );
   }
 
   function mobileClass(
     active: boolean
   ) {
     return [
-      "relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 text-[8px] transition",
+      "relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 text-[8px] font-[550] transition",
       active
         ? "text-primary"
         : "text-base-content/40",
-    ].join(" ");
+    ].join(
+      " "
+    );
   }
 
   const initials =
@@ -371,7 +478,7 @@ export default function SystemSidebar({
   return (
     <>
       {/* =====================================================
-          SIDEBAR DESKTOP
+          DESKTOP
       ====================================================== */}
 
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-white/[0.06] bg-[#151515] text-white lg:flex">
@@ -384,7 +491,7 @@ export default function SystemSidebar({
             href="/dashboard"
             className="group flex w-full items-center gap-3 rounded-xl px-2 py-2"
           >
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary font-bold text-primary-content shadow-[0_8px_25px_rgba(175,27,27,0.22)]">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary font-[750] text-primary-content shadow-[0_8px_25px_rgba(175,27,27,0.22)]">
               <div className="absolute -right-2 -top-2 h-6 w-6 rounded-full bg-white/10 blur-sm" />
 
               <span className="relative">
@@ -394,15 +501,15 @@ export default function SystemSidebar({
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-[13px] font-bold tracking-[0.05em]">
+                <p className="text-[13px] font-[750] tracking-[0.05em]">
                   PROJETA
                 </p>
 
                 <span className="h-1 w-1 rounded-full bg-primary" />
               </div>
 
-              <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-white/30">
-                Compras & Operações
+              <p className="mt-0.5 text-[9px] font-[550] uppercase tracking-[0.18em] text-white/30">
+                Compras OS
               </p>
             </div>
           </Link>
@@ -413,9 +520,7 @@ export default function SystemSidebar({
         ==================================================== */}
 
         <nav className="projeta-sidebar-scroll flex-1 overflow-y-auto px-3 py-5">
-          {/* =================================================
-              VISÃO GERAL
-          ================================================== */}
+          {/* VISÃO GERAL */}
 
           <SidebarSection>
             Visão geral
@@ -444,143 +549,16 @@ export default function SystemSidebar({
 
               Dashboard
             </Link>
-          </div>
 
-          {/* =================================================
-              OPERAÇÕES
-          ================================================== */}
+            {/* PENDÊNCIAS */}
 
-          <SidebarDivider />
-
-          <SidebarSection>
-            Operações
-          </SidebarSection>
-
-          <div className="space-y-1">
-            <Link
-              href="/solicitacoes/nova"
-              className={navClass(
-                isNewRequest
-              )}
-            >
-              {isNewRequest && (
-                <ActiveIndicator />
-              )}
-
-              <span
-                className={iconClass(
-                  isNewRequest
-                )}
-              >
-                <Send
-                  size={16}
-                />
-              </span>
-
-              Solicitar Cartão
-            </Link>
-
-            <Link
-              href="/solicitacoes"
-              className={navClass(
-                isMyRequests
-              )}
-            >
-              {isMyRequests && (
-                <ActiveIndicator />
-              )}
-
-              <span
-                className={iconClass(
-                  isMyRequests
-                )}
-              >
-                <CreditCard
-                  size={16}
-                />
-              </span>
-
-              Minhas Solicitações
-            </Link>
-
-            <Link
-              href="/devolucoes"
-              className={navClass(
-                isReturns
-              )}
-            >
-              {isReturns && (
-                <ActiveIndicator />
-              )}
-
-              <span
-                className={iconClass(
-                  isReturns
-                )}
-              >
-                <RotateCcw
-                  size={16}
-                />
-              </span>
-
-              Devoluções
-            </Link>
-          </div>
-
-          {/* =================================================
-              COMPRAS
-          ================================================== */}
-
-          <SidebarDivider />
-
-          <SidebarSection>
-            Compras
-          </SidebarSection>
-
-          <div className="space-y-1">
-            <Link
-              href="/meus-pedidos"
-              className={navClass(
-                isMyOrders
-              )}
-            >
-              {isMyOrders && (
-                <ActiveIndicator />
-              )}
-
-              <span
-                className={iconClass(
-                  isMyOrders
-                )}
-              >
-                <PackageSearch
-                  size={16}
-                />
-              </span>
-
-              <span className="flex-1">
-                Meus Pedidos
-              </span>
-
-              <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-white/30">
-                Sienge
-              </span>
-            </Link>
-          </div>
-
-          {/* =================================================
-              GESTÃO
-          ================================================== */}
-
-          <SidebarDivider />
-
-          <SidebarSection>
-            Gestão
-          </SidebarSection>
-
-          <div className="space-y-1">
             <Link
               href="/pendencias"
+              title={
+                !loadingPending
+                  ? `${pendingCount} pendências totais · ${criticalCount} críticas · ${attentionCount} em atenção`
+                  : "Central de pendências"
+              }
               className={navClass(
                 isPendencias
               )}
@@ -610,12 +588,98 @@ export default function SystemSidebar({
                     count={
                       pendingCount
                     }
-                    critical={
-                      criticalCount >
-                      0
+                    status={
+                      pendingStatus
                     }
                   />
                 )}
+            </Link>
+          </div>
+
+          {/* =================================================
+              MINHA OPERAÇÃO
+          ================================================== */}
+
+          <SidebarDivider />
+
+          <SidebarSection>
+            Minha operação
+          </SidebarSection>
+
+          <div className="space-y-1">
+            <Link
+              href="/solicitacoes"
+              className={navClass(
+                isMyRequests
+              )}
+            >
+              {isMyRequests && (
+                <ActiveIndicator />
+              )}
+
+              <span
+                className={iconClass(
+                  isMyRequests
+                )}
+              >
+                <CreditCard
+                  size={16}
+                />
+              </span>
+
+              Solicitações
+            </Link>
+
+            <Link
+              href="/devolucoes"
+              className={navClass(
+                isReturns
+              )}
+            >
+              {isReturns && (
+                <ActiveIndicator />
+              )}
+
+              <span
+                className={iconClass(
+                  isReturns
+                )}
+              >
+                <RotateCcw
+                  size={16}
+                />
+              </span>
+
+              Devoluções
+            </Link>
+
+            <Link
+              href="/meus-pedidos"
+              className={navClass(
+                isMyOrders
+              )}
+            >
+              {isMyOrders && (
+                <ActiveIndicator />
+              )}
+
+              <span
+                className={iconClass(
+                  isMyOrders
+                )}
+              >
+                <PackageSearch
+                  size={16}
+                />
+              </span>
+
+              <span className="flex-1">
+                Meus pedidos
+              </span>
+
+              <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[8px] font-[650] uppercase tracking-wide text-white/30">
+                Sienge
+              </span>
             </Link>
           </div>
 
@@ -652,7 +716,7 @@ export default function SystemSidebar({
                     />
                   </span>
 
-                  Gerenciar Solicitações
+                  Solicitações
                 </Link>
 
                 <Link
@@ -675,7 +739,7 @@ export default function SystemSidebar({
                     />
                   </span>
 
-                  Cartões Corporativos
+                  Cartões
                 </Link>
 
                 <Link
@@ -698,7 +762,7 @@ export default function SystemSidebar({
                     />
                   </span>
 
-                  Conferir Devoluções
+                  Conferências
                 </Link>
 
                 <Link
@@ -760,7 +824,7 @@ export default function SystemSidebar({
                     />
                   </span>
 
-                  Usuários e Permissões
+                  Usuários e acessos
                 </Link>
               </div>
             </>
@@ -768,43 +832,27 @@ export default function SystemSidebar({
         </nav>
 
         {/* ===================================================
-            STATUS DO SISTEMA
+            STATUS OPERACIONAL
         ==================================================== */}
 
         <div className="px-3 pb-3">
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <div className="h-2 w-2 rounded-full bg-success" />
-
-                  <div className="absolute inset-0 animate-ping rounded-full bg-success opacity-30" />
-                </div>
-
-                <p className="text-[10px] font-medium text-white/45">
-                  Sistema operacional
-                </p>
-              </div>
-
-              {!loadingPending &&
-                criticalCount >
-                  0 && (
-                  <Link
-                    href="/pendencias"
-                    title={`${criticalCount} pendência(s) crítica(s)`}
-                    className="flex items-center gap-1 text-[9px] font-semibold text-error"
-                  >
-                    <AlertTriangle
-                      size={12}
-                    />
-
-                    {
-                      criticalCount
-                    }
-                  </Link>
-                )}
-            </div>
-          </div>
+          <PendingStatusPanel
+            loading={
+              loadingPending
+            }
+            total={
+              pendingCount
+            }
+            critical={
+              criticalCount
+            }
+            attention={
+              attentionCount
+            }
+            status={
+              pendingStatus
+            }
+          />
         </div>
 
         {/* ===================================================
@@ -813,12 +861,12 @@ export default function SystemSidebar({
 
         <div className="border-t border-white/[0.06] p-3">
           <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-[10px] font-bold text-white/75">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-[10px] font-[750] text-white/75">
               {initials}
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-white/75">
+              <p className="truncate text-xs font-[650] text-white/75">
                 {
                   profile.full_name
                 }
@@ -858,7 +906,9 @@ export default function SystemSidebar({
         className={[
           "fixed bottom-0 left-0 right-0 z-50 grid border-t border-base-300 bg-base-100/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl lg:hidden",
           mobileColumns,
-        ].join(" ")}
+        ].join(
+          " "
+        )}
       >
         <Link
           href="/dashboard"
@@ -955,9 +1005,7 @@ export default function SystemSidebar({
           Pedidos
         </Link>
 
-        {/* ===================================================
-            PENDÊNCIAS MOBILE
-        ==================================================== */}
+        {/* PENDÊNCIAS */}
 
         <Link
           href="/pendencias"
@@ -981,12 +1029,14 @@ export default function SystemSidebar({
                 0 && (
                 <span
                   className={[
-                    "absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[7px] font-bold text-white",
-                    criticalCount >
-                    0
+                    "absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[7px] font-[750] text-white",
+                    pendingStatus ===
+                    "critical"
                       ? "bg-error"
                       : "bg-warning",
-                  ].join(" ")}
+                  ].join(
+                    " "
+                  )}
                 >
                   {pendingCount >
                   99
@@ -1029,27 +1079,34 @@ export default function SystemSidebar({
 }
 
 // ============================================================
-// BADGE DE PENDÊNCIAS
+// BADGE
 // ============================================================
 
 function PendingBadge({
   count,
-  critical,
+  status,
 }: {
   count: number;
 
-  critical: boolean;
+  status: PendingStatus;
 }) {
   return (
     <span
       className={[
-        "relative flex min-w-6 items-center justify-center rounded-lg px-1.5 py-1 text-[9px] font-bold leading-none",
-        critical
+        "relative flex min-w-6 items-center justify-center rounded-lg px-1.5 py-1 text-[9px] font-[750] leading-none",
+        status ===
+        "critical"
           ? "bg-error/15 text-red-300"
-          : "bg-warning/15 text-amber-300",
-      ].join(" ")}
+          : status ===
+              "attention"
+            ? "bg-warning/15 text-amber-300"
+            : "bg-success/15 text-emerald-300",
+      ].join(
+        " "
+      )}
     >
-      {critical && (
+      {status ===
+        "critical" && (
         <span className="absolute inset-0 animate-pulse rounded-lg ring-1 ring-error/20" />
       )}
 
@@ -1064,7 +1121,142 @@ function PendingBadge({
 }
 
 // ============================================================
-// SEÇÃO
+// STATUS PANEL
+// ============================================================
+
+function PendingStatusPanel({
+  loading,
+  total,
+  critical,
+  attention,
+  status,
+}: {
+  loading: boolean;
+
+  total: number;
+
+  critical: number;
+
+  attention: number;
+
+  status: PendingStatus;
+}) {
+  if (
+    loading
+  ) {
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+        <div className="flex items-center gap-2">
+          <span className="loading loading-spinner loading-xs text-white/20" />
+
+          <p className="text-[9px] font-[550] text-white/30">
+            Atualizando operação...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    status ===
+      "healthy"
+  ) {
+    return (
+      <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/[0.035] p-3">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <div className="h-2 w-2 rounded-full bg-success" />
+
+            <div className="absolute inset-0 animate-ping rounded-full bg-success opacity-30" />
+          </div>
+
+          <div className="min-w-0">
+            <p className="text-[10px] font-[650] text-white/65">
+              Operação estável
+            </p>
+
+            <p className="mt-0.5 text-[8px] text-white/25">
+              Nenhuma pendência ativa
+            </p>
+          </div>
+
+          <CheckCircle2
+            size={14}
+            className="ml-auto text-success"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href="/pendencias"
+      className={[
+        "group block rounded-xl border p-3 transition",
+        status ===
+        "critical"
+          ? "border-error/15 bg-error/[0.045] hover:bg-error/[0.075]"
+          : "border-warning/15 bg-warning/[0.045] hover:bg-warning/[0.075]",
+      ].join(
+        " "
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <div
+          className={[
+            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+            status ===
+            "critical"
+              ? "bg-error/10 text-red-300"
+              : "bg-warning/10 text-amber-300",
+          ].join(
+            " "
+          )}
+        >
+          <AlertTriangle
+            size={13}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-[650] text-white/65">
+              Central de atenção
+            </p>
+
+            <span className="text-[10px] font-[750] tabular-nums text-white/65">
+              {total}
+            </span>
+          </div>
+
+          <div className="mt-2 flex items-center gap-3">
+            {critical >
+              0 && (
+              <span className="flex items-center gap-1 text-[8px] font-[650] text-red-300/80">
+                <span className="h-1.5 w-1.5 rounded-full bg-error" />
+
+                {critical} críticas
+              </span>
+            )}
+
+            {attention >
+              0 && (
+              <span className="flex items-center gap-1 text-[8px] font-[650] text-amber-300/75">
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+
+                {attention} atenção
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ============================================================
+// SECTION
 // ============================================================
 
 function SidebarSection({
@@ -1074,14 +1266,14 @@ function SidebarSection({
     ReactNode;
 }) {
   return (
-    <p className="mb-2 px-3 text-[8px] font-semibold uppercase tracking-[0.2em] text-white/20">
+    <p className="mb-2 px-3 text-[8px] font-[650] uppercase tracking-[0.2em] text-white/20">
       {children}
     </p>
   );
 }
 
 // ============================================================
-// DIVISOR
+// DIVIDER
 // ============================================================
 
 function SidebarDivider() {
@@ -1091,7 +1283,7 @@ function SidebarDivider() {
 }
 
 // ============================================================
-// INDICADOR ATIVO
+// ACTIVE
 // ============================================================
 
 function ActiveIndicator() {
@@ -1109,7 +1301,9 @@ function MobileActive({
 }: {
   active: boolean;
 }) {
-  if (!active) {
+  if (
+    !active
+  ) {
     return null;
   }
 
@@ -1128,7 +1322,9 @@ function getInitials(
   const words =
     name
       .trim()
-      .split(/\s+/)
+      .split(
+        /\s+/
+      )
       .filter(
         Boolean
       );
