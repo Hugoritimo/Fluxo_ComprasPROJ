@@ -31,6 +31,8 @@ import MetricCard from "@/components/ui/projeta/metric-card";
 
 import CreateUserDialog from "./create-user-dialog";
 
+import DeleteUserButton from "./delete-user-button";
+
 import FirstAccessLinkButton from "./first-access-link-button";
 
 import UserStatusButton from "./user-status-button";
@@ -117,7 +119,9 @@ export default async function UsersPage({
   const currentUserId =
     claimsData?.claims?.sub;
 
-  if (!currentUserId) {
+  if (
+    !currentUserId
+  ) {
     redirect(
       "/login"
     );
@@ -167,18 +171,16 @@ export default async function UsersPage({
         )
     );
 
-  const canManageUsers =
-    currentRoles.includes(
-      "admin"
-    ) ||
-    currentRoles.includes(
-      "superadmin"
-    );
-
   const isSuperadmin =
     currentRoles.includes(
       "superadmin"
     );
+
+  const canManageUsers =
+    currentRoles.includes(
+      "admin"
+    ) ||
+    isSuperadmin;
 
   if (
     !canManageUsers
@@ -544,8 +546,6 @@ export default async function UsersPage({
           action="/administracao/usuarios"
           className="mb-5 grid gap-3 rounded-[20px] border border-base-300 bg-base-100 p-3 lg:grid-cols-[1fr_200px_190px_auto]"
         >
-          {/* BUSCA */}
-
           <label className="flex h-10 items-center gap-2.5 rounded-xl border border-base-300 bg-base-200/30 px-3 focus-within:border-primary/30">
             <Search
               size={
@@ -564,8 +564,6 @@ export default async function UsersPage({
               className="min-w-0 flex-1 bg-transparent text-xs outline-none"
             />
           </label>
-
-          {/* PERFIL */}
 
           <select
             name="perfil"
@@ -594,8 +592,6 @@ export default async function UsersPage({
               Superadministradores
             </option>
           </select>
-
-          {/* STATUS */}
 
           <select
             name="status"
@@ -640,8 +636,6 @@ export default async function UsersPage({
         }
       >
         <section className="overflow-hidden rounded-[22px] border border-base-300 bg-base-100">
-          {/* CABEÇALHO DA TABELA */}
-
           <div className="flex items-center justify-between border-b border-base-300 px-5 py-4 sm:px-6">
             <div>
               <h2 className="text-sm font-semibold">
@@ -673,8 +667,6 @@ export default async function UsersPage({
               </Link>
             )}
           </div>
-
-          {/* SEM RESULTADOS */}
 
           {filteredUsers.length ===
           0 ? (
@@ -757,6 +749,17 @@ export default async function UsersPage({
                         user.is_active &&
                         user.must_change_password;
 
+                      // =======================================
+                      // EXCLUSÃO
+                      //
+                      // Somente Superadmin.
+                      // Nunca a própria conta.
+                      // =======================================
+
+                      const canDeleteUser =
+                        isSuperadmin &&
+                        !isCurrentUser;
+
                       return (
                         <tr
                           key={
@@ -764,9 +767,7 @@ export default async function UsersPage({
                           }
                           className="border-base-300/70 transition-colors hover:bg-base-200/25"
                         >
-                          {/* =================================
-                              USUÁRIO
-                          ================================= */}
+                          {/* USUÁRIO */}
 
                           <td>
                             <div className="flex items-center gap-3">
@@ -804,9 +805,7 @@ export default async function UsersPage({
                             </div>
                           </td>
 
-                          {/* =================================
-                              SETOR / CARGO
-                          ================================= */}
+                          {/* SETOR / CARGO */}
 
                           <td>
                             <p className="text-xs font-medium text-base-content/65">
@@ -824,9 +823,7 @@ export default async function UsersPage({
                             </p>
                           </td>
 
-                          {/* =================================
-                              PERFIL
-                          ================================= */}
+                          {/* PERFIL */}
 
                           <td>
                             <RoleBadge
@@ -836,9 +833,7 @@ export default async function UsersPage({
                             />
                           </td>
 
-                          {/* =================================
-                              STATUS
-                          ================================= */}
+                          {/* STATUS */}
 
                           <td>
                             <UserAccessStatus
@@ -851,9 +846,7 @@ export default async function UsersPage({
                             />
                           </td>
 
-                          {/* =================================
-                              ÚLTIMO ACESSO
-                          ================================= */}
+                          {/* ÚLTIMO ACESSO */}
 
                           <td>
                             <div className="flex items-center gap-2">
@@ -872,14 +865,10 @@ export default async function UsersPage({
                             </div>
                           </td>
 
-                          {/* =================================
-                              AÇÕES
-                          ================================= */}
+                          {/* AÇÕES */}
 
                           <td>
                             <div className="flex items-center justify-end gap-1">
-                              {/* LINK DE PRIMEIRO ACESSO */}
-
                               {awaitingFirstAccess && (
                                 <FirstAccessLinkButton
                                   userId={
@@ -887,8 +876,6 @@ export default async function UsersPage({
                                   }
                                 />
                               )}
-
-                              {/* ATIVAR / DESATIVAR */}
 
                               <UserStatusButton
                                 userId={
@@ -901,6 +888,33 @@ export default async function UsersPage({
                                   cannotChangeStatus
                                 }
                               />
+
+                              {/* =============================
+                                  EXCLUIR
+                              ============================== */}
+
+                              {canDeleteUser && (
+                                <>
+                                  <span className="mx-1 h-5 w-px bg-base-300" />
+
+                                  <DeleteUserButton
+                                    userId={
+                                      user.id
+                                    }
+                                    userName={
+                                      user.full_name ??
+                                      user.email ??
+                                      "Usuário"
+                                    }
+                                    userEmail={
+                                      user.email
+                                    }
+                                    isSuperadminUser={
+                                      targetIsSuperadmin
+                                    }
+                                  />
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1019,10 +1033,6 @@ function UserAccessStatus({
 
   mustChangePassword: boolean;
 }) {
-  // =========================================================
-  // DESATIVADO
-  // =========================================================
-
   if (
     !active
   ) {
@@ -1040,10 +1050,6 @@ function UserAccessStatus({
       </div>
     );
   }
-
-  // =========================================================
-  // AGUARDANDO PRIMEIRO ACESSO
-  // =========================================================
 
   if (
     mustChangePassword
@@ -1068,10 +1074,6 @@ function UserAccessStatus({
       </div>
     );
   }
-
-  // =========================================================
-  // ATIVO
-  // =========================================================
 
   return (
     <div className="flex flex-col items-start gap-1">

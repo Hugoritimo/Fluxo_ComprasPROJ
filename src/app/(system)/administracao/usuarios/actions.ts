@@ -1,9 +1,16 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import {
+    revalidatePath,
+} from "next/cache";
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import {
+    createAdminClient,
+} from "@/lib/supabase/admin";
+
+import {
+    createClient,
+} from "@/lib/supabase/server";
 
 // ============================================================
 // TIPOS
@@ -45,11 +52,18 @@ function getAppUrl() {
         process.env.APP_URL?.trim() ||
         process.env.NEXT_PUBLIC_APP_URL?.trim();
 
-    if (configured) {
-        return configured.replace(/\/+$/, "");
+    if (
+        configured
+    ) {
+        return configured.replace(
+            /\/+$/,
+            ""
+        );
     }
 
-    if (process.env.VERCEL_URL) {
+    if (
+        process.env.VERCEL_URL
+    ) {
         return `https://${process.env.VERCEL_URL}`;
     }
 
@@ -67,10 +81,11 @@ function buildFirstAccessUrl({
     tokenHash: string;
     type: "invite" | "magiclink";
 }) {
-    const url = new URL(
-        "/ativar-acesso",
-        getAppUrl()
-    );
+    const url =
+        new URL(
+            "/ativar-acesso",
+            getAppUrl()
+        );
 
     url.searchParams.set(
         "token_hash",
@@ -86,7 +101,7 @@ function buildFirstAccessUrl({
 }
 
 // ============================================================
-// VALIDAR ADMIN
+// VALIDAR ADMIN / SUPERADMIN
 // ============================================================
 
 async function requireUserManager() {
@@ -94,50 +109,74 @@ async function requireUserManager() {
         await createClient();
 
     const {
-        data: claimsData,
+        data:
+        claimsData,
     } =
         await supabase.auth.getClaims();
 
     const actorUserId =
         claimsData?.claims?.sub;
 
-    if (!actorUserId) {
+    if (
+        !actorUserId
+    ) {
         throw new Error(
             "Usuário não autenticado."
         );
     }
 
     const {
-        data: roleRows,
+        data:
+        roleRows,
         error,
     } =
         await supabase
-            .from("user_roles")
-            .select("role")
+            .from(
+                "user_roles"
+            )
+            .select(
+                "role"
+            )
             .eq(
                 "user_id",
                 actorUserId
             );
 
-    if (error) {
+    if (
+        error
+    ) {
         throw new Error(
             "Não foi possível validar suas permissões."
         );
     }
 
     const roles =
-        (roleRows ?? []).map(
-            (row) =>
-                String(row.role)
+        (
+            roleRows ??
+            []
+        ).map(
+            (
+                row
+            ) =>
+                String(
+                    row.role
+                )
         );
 
-    const canManage =
-        roles.includes("admin") ||
+    const isSuperadmin =
         roles.includes(
             "superadmin"
         );
 
-    if (!canManage) {
+    const canManage =
+        roles.includes(
+            "admin"
+        ) ||
+        isSuperadmin;
+
+    if (
+        !canManage
+    ) {
         throw new Error(
             "Você não possui permissão para gerenciar usuários."
         );
@@ -145,11 +184,41 @@ async function requireUserManager() {
 
     return {
         actorUserId,
+        isSuperadmin,
+        roles,
+    };
+}
 
-        isSuperadmin:
-            roles.includes(
-                "superadmin"
-            ),
+// ============================================================
+// EXIGIR SUPERADMIN
+// ============================================================
+//
+// IMPORTANTE:
+//
+// Essa validação acontece no SERVIDOR.
+//
+// Portanto, mesmo que alguém tente executar manualmente
+// a Server Action pelo navegador, somente uma conta com
+// role "superadmin" poderá continuar.
+// ============================================================
+
+async function requireSuperadmin() {
+    const {
+        actorUserId,
+        isSuperadmin,
+    } =
+        await requireUserManager();
+
+    if (
+        !isSuperadmin
+    ) {
+        throw new Error(
+            "Somente o Superadministrador pode excluir usuários."
+        );
+    }
+
+    return {
+        actorUserId,
     };
 }
 
@@ -172,14 +241,16 @@ export async function createSystemUser(
             String(
                 formData.get(
                     "fullName"
-                ) ?? ""
+                ) ??
+                ""
             ).trim();
 
         const email =
             String(
                 formData.get(
                     "email"
-                ) ?? ""
+                ) ??
+                ""
             )
                 .trim()
                 .toLowerCase();
@@ -218,7 +289,8 @@ export async function createSystemUser(
         // ========================================================
 
         if (
-            fullName.length < 3
+            fullName.length <
+            3
         ) {
             return {
                 success: false,
@@ -228,7 +300,9 @@ export async function createSystemUser(
         }
 
         if (
-            !isValidEmail(email)
+            !isValidEmail(
+                email
+            )
         ) {
             return {
                 success: false,
@@ -257,6 +331,10 @@ export async function createSystemUser(
             };
         }
 
+        // ========================================================
+        // SOMENTE SUPERADMIN CRIA SUPERADMIN
+        // ========================================================
+
         if (
             role ===
             "superadmin" &&
@@ -283,8 +361,12 @@ export async function createSystemUser(
             existingProfileError,
         } =
             await admin
-                .from("profiles")
-                .select("id")
+                .from(
+                    "profiles"
+                )
+                .select(
+                    "id"
+                )
                 .eq(
                     "email",
                     email
@@ -306,7 +388,9 @@ export async function createSystemUser(
             };
         }
 
-        if (existingProfile) {
+        if (
+            existingProfile
+        ) {
             return {
                 success: false,
                 error:
@@ -317,21 +401,18 @@ export async function createSystemUser(
         // ========================================================
         // GERAR CONVITE
         //
-        // IMPORTANTE:
         // generateLink NÃO envia e-mail.
-        //
-        // No tipo invite:
-        // - cria o usuário no Supabase Auth
-        // - gera token individual
-        // - retorna os dados do link
         // ========================================================
 
         const {
-            data: linkData,
-            error: linkError,
+            data:
+            linkData,
+            error:
+            linkError,
         } =
             await admin.auth.admin.generateLink({
-                type: "invite",
+                type:
+                    "invite",
 
                 email,
 
@@ -384,7 +465,9 @@ export async function createSystemUser(
             linkData.properties
                 .hashed_token;
 
-        if (!tokenHash) {
+        if (
+            !tokenHash
+        ) {
             await admin.auth.admin.deleteUser(
                 newUserId
             );
@@ -399,7 +482,8 @@ export async function createSystemUser(
         const invitationLink =
             buildFirstAccessUrl({
                 tokenHash,
-                type: "invite",
+                type:
+                    "invite",
             });
 
         // ========================================================
@@ -411,7 +495,9 @@ export async function createSystemUser(
             profileError,
         } =
             await admin
-                .from("profiles")
+                .from(
+                    "profiles"
+                )
                 .upsert(
                     {
                         id:
@@ -429,7 +515,7 @@ export async function createSystemUser(
 
                         phone,
 
-                        // Mantemos compatibilidade
+                        // Compatibilidade
                         // com a estrutura antiga.
                         active:
                             true,
@@ -452,7 +538,9 @@ export async function createSystemUser(
                     }
                 );
 
-        if (profileError) {
+        if (
+            profileError
+        ) {
             console.error(
                 "Erro ao criar profile:",
                 profileError
@@ -480,10 +568,13 @@ export async function createSystemUser(
             "collaborator"
         ) {
             const {
-                error: roleError,
+                error:
+                roleError,
             } =
                 await admin
-                    .from("user_roles")
+                    .from(
+                        "user_roles"
+                    )
                     .insert({
                         user_id:
                             newUserId,
@@ -491,14 +582,18 @@ export async function createSystemUser(
                         role,
                     });
 
-            if (roleError) {
+            if (
+                roleError
+            ) {
                 console.error(
                     "Erro ao atribuir role:",
                     roleError
                 );
 
                 await admin
-                    .from("profiles")
+                    .from(
+                        "profiles"
+                    )
                     .delete()
                     .eq(
                         "id",
@@ -519,12 +614,11 @@ export async function createSystemUser(
 
         // ========================================================
         // AUDITORIA
-        //
-        // NÃO gravamos o token/link no banco.
         // ========================================================
 
         const {
-            error: auditError,
+            error:
+            auditError,
         } =
             await admin
                 .from(
@@ -552,7 +646,9 @@ export async function createSystemUser(
                     },
                 });
 
-        if (auditError) {
+        if (
+            auditError
+        ) {
             console.error(
                 "Erro ao registrar auditoria:",
                 auditError
@@ -565,13 +661,16 @@ export async function createSystemUser(
 
         return {
             success: true,
-            error: null,
+            error:
+                null,
             userId:
                 newUserId,
             email,
             invitationLink,
         };
-    } catch (error) {
+    } catch (
+    error
+    ) {
         console.error(
             "Erro ao criar usuário:",
             error
@@ -581,7 +680,8 @@ export async function createSystemUser(
             success: false,
 
             error:
-                error instanceof Error
+                error instanceof
+                    Error
                     ? error.message
                     : "Não foi possível criar o usuário.",
         };
@@ -593,8 +693,10 @@ export async function createSystemUser(
 // ============================================================
 
 export async function generateFirstAccessLink(
-    _previousState: FirstAccessLinkState,
-    formData: FormData
+    _previousState:
+        FirstAccessLinkState,
+    formData:
+        FormData
 ): Promise<FirstAccessLinkState> {
     try {
         const {
@@ -606,10 +708,13 @@ export async function generateFirstAccessLink(
             String(
                 formData.get(
                     "userId"
-                ) ?? ""
+                ) ??
+                ""
             ).trim();
 
-        if (!userId) {
+        if (
+            !userId
+        ) {
             return {
                 success: false,
                 error:
@@ -621,19 +726,23 @@ export async function generateFirstAccessLink(
             createAdminClient();
 
         const {
-            data: profile,
-            error: profileError,
+            data:
+            profile,
+            error:
+            profileError,
         } =
             await admin
-                .from("profiles")
+                .from(
+                    "profiles"
+                )
                 .select(
                     `
-          id,
-          full_name,
-          email,
-          is_active,
-          must_change_password
-          `
+                    id,
+                    full_name,
+                    email,
+                    is_active,
+                    must_change_password
+                    `
                 )
                 .eq(
                     "id",
@@ -673,7 +782,9 @@ export async function generateFirstAccessLink(
             };
         }
 
-        if (!profile.email) {
+        if (
+            !profile.email
+        ) {
             return {
                 success: false,
                 error:
@@ -682,24 +793,18 @@ export async function generateFirstAccessLink(
         }
 
         // ========================================================
-        // PARA USUÁRIO JÁ EXISTENTE:
-        //
-        // Geramos um Magic Link administrativo.
-        //
-        // Ele NÃO entra diretamente no sistema.
-        // O link aponta para nossa página de confirmação e,
-        // depois da validação, o usuário obrigatoriamente vai
-        // para /primeiro-acesso porque o profile permanece com:
-        //
-        // must_change_password = true
+        // MAGIC LINK
         // ========================================================
 
         const {
-            data: linkData,
-            error: linkError,
+            data:
+            linkData,
+            error:
+            linkError,
         } =
             await admin.auth.admin.generateLink({
-                type: "magiclink",
+                type:
+                    "magiclink",
 
                 email:
                     profile.email,
@@ -725,7 +830,9 @@ export async function generateFirstAccessLink(
             linkData.properties
                 .hashed_token;
 
-        if (!tokenHash) {
+        if (
+            !tokenHash
+        ) {
             return {
                 success: false,
                 error:
@@ -736,7 +843,8 @@ export async function generateFirstAccessLink(
         const invitationLink =
             buildFirstAccessUrl({
                 tokenHash,
-                type: "magiclink",
+                type:
+                    "magiclink",
             });
 
         await admin
@@ -761,17 +869,21 @@ export async function generateFirstAccessLink(
 
         return {
             success: true,
-            error: null,
+            error:
+                null,
             email:
                 profile.email,
             invitationLink,
         };
-    } catch (error) {
+    } catch (
+    error
+    ) {
         return {
             success: false,
 
             error:
-                error instanceof Error
+                error instanceof
+                    Error
                     ? error.message
                     : "Não foi possível gerar o link.",
         };
@@ -783,8 +895,10 @@ export async function generateFirstAccessLink(
 // ============================================================
 
 export async function changeUserActiveStatus(
-    _previousState: UserActionState,
-    formData: FormData
+    _previousState:
+        UserActionState,
+    formData:
+        FormData
 ): Promise<UserActionState> {
     try {
         const {
@@ -797,23 +911,32 @@ export async function changeUserActiveStatus(
             String(
                 formData.get(
                     "userId"
-                ) ?? ""
-            );
+                ) ??
+                ""
+            ).trim();
 
         const newStatus =
             String(
                 formData.get(
                     "newStatus"
-                ) ?? ""
-            ) === "true";
+                ) ??
+                ""
+            ) ===
+            "true";
 
-        if (!targetUserId) {
+        if (
+            !targetUserId
+        ) {
             return {
                 success: false,
                 error:
                     "Usuário não informado.",
             };
         }
+
+        // ========================================================
+        // NÃO PODE DESATIVAR A PRÓPRIA CONTA
+        // ========================================================
 
         if (
             targetUserId ===
@@ -839,8 +962,12 @@ export async function changeUserActiveStatus(
             targetRoles,
         } =
             await admin
-                .from("user_roles")
-                .select("role")
+                .from(
+                    "user_roles"
+                )
+                .select(
+                    "role"
+                )
                 .eq(
                     "user_id",
                     targetUserId
@@ -848,9 +975,12 @@ export async function changeUserActiveStatus(
 
         const targetIsSuperadmin =
             (
-                targetRoles ?? []
+                targetRoles ??
+                []
             ).some(
-                (row) =>
+                (
+                    row
+                ) =>
                     String(
                         row.role
                     ) ===
@@ -877,7 +1007,9 @@ export async function changeUserActiveStatus(
             profileError,
         } =
             await admin
-                .from("profiles")
+                .from(
+                    "profiles"
+                )
                 .update({
                     active:
                         newStatus,
@@ -890,7 +1022,9 @@ export async function changeUserActiveStatus(
                     targetUserId
                 );
 
-        if (profileError) {
+        if (
+            profileError
+        ) {
             return {
                 success: false,
                 error:
@@ -903,7 +1037,8 @@ export async function changeUserActiveStatus(
         // ========================================================
 
         const {
-            error: authError,
+            error:
+            authError,
         } =
             await admin.auth.admin.updateUserById(
                 targetUserId,
@@ -915,14 +1050,18 @@ export async function changeUserActiveStatus(
                 }
             );
 
-        if (authError) {
+        if (
+            authError
+        ) {
             console.error(
                 "Erro ao alterar Auth:",
                 authError
             );
 
             await admin
-                .from("profiles")
+                .from(
+                    "profiles"
+                )
                 .update({
                     active:
                         !newStatus,
@@ -979,21 +1118,380 @@ export async function changeUserActiveStatus(
 
         return {
             success: true,
-            error: null,
+            error:
+                null,
 
             message:
                 newStatus
                     ? "Usuário ativado."
                     : "Usuário desativado.",
         };
-    } catch (error) {
+    } catch (
+    error
+    ) {
         return {
             success: false,
 
             error:
-                error instanceof Error
+                error instanceof
+                    Error
                     ? error.message
                     : "Não foi possível alterar o usuário.",
+        };
+    }
+}
+
+// ============================================================
+// EXCLUIR USUÁRIO
+// ============================================================
+//
+// REGRA DE SEGURANÇA:
+//
+// ADMIN:
+// - NÃO pode excluir.
+//
+// SUPERADMIN:
+// - pode excluir;
+// - NÃO pode excluir a própria conta.
+//
+// A validação acontece no servidor.
+// ============================================================
+
+export async function deleteSystemUser(
+    _previousState:
+        UserActionState,
+    formData:
+        FormData
+): Promise<UserActionState> {
+    try {
+        // ========================================================
+        // SOMENTE SUPERADMIN
+        // ========================================================
+
+        const {
+            actorUserId,
+        } =
+            await requireSuperadmin();
+
+        const targetUserId =
+            String(
+                formData.get(
+                    "userId"
+                ) ??
+                ""
+            ).trim();
+
+        if (
+            !targetUserId
+        ) {
+            return {
+                success: false,
+                error:
+                    "Usuário não informado.",
+            };
+        }
+
+        // ========================================================
+        // NÃO PERMITIR AUTOEXCLUSÃO
+        // ========================================================
+
+        if (
+            targetUserId ===
+            actorUserId
+        ) {
+            return {
+                success: false,
+                error:
+                    "Você não pode excluir sua própria conta de Superadministrador.",
+            };
+        }
+
+        const admin =
+            createAdminClient();
+
+        // ========================================================
+        // LOCALIZAR USUÁRIO
+        // ========================================================
+
+        const {
+            data:
+            targetProfile,
+            error:
+            targetProfileError,
+        } =
+            await admin
+                .from(
+                    "profiles"
+                )
+                .select(
+                    `
+                    id,
+                    full_name,
+                    email
+                    `
+                )
+                .eq(
+                    "id",
+                    targetUserId
+                )
+                .maybeSingle();
+
+        if (
+            targetProfileError
+        ) {
+            console.error(
+                "Erro ao consultar usuário para exclusão:",
+                targetProfileError
+            );
+
+            return {
+                success: false,
+                error:
+                    "Não foi possível consultar o usuário.",
+            };
+        }
+
+        if (
+            !targetProfile
+        ) {
+            return {
+                success: false,
+                error:
+                    "Usuário não encontrado.",
+            };
+        }
+
+        // ========================================================
+        // CONSULTAR ROLE DO USUÁRIO
+        // ========================================================
+
+        const {
+            data:
+            targetRoleRows,
+            error:
+            targetRolesError,
+        } =
+            await admin
+                .from(
+                    "user_roles"
+                )
+                .select(
+                    "role"
+                )
+                .eq(
+                    "user_id",
+                    targetUserId
+                );
+
+        if (
+            targetRolesError
+        ) {
+            console.error(
+                "Erro ao consultar permissões do usuário:",
+                targetRolesError
+            );
+
+            return {
+                success: false,
+                error:
+                    "Não foi possível validar o perfil do usuário.",
+            };
+        }
+
+        const targetRoles =
+            (
+                targetRoleRows ??
+                []
+            ).map(
+                (
+                    row
+                ) =>
+                    String(
+                        row.role
+                    )
+            );
+
+        // ========================================================
+        // AUDITORIA ANTES DA EXCLUSÃO
+        // ========================================================
+        //
+        // Tentamos registrar antes porque depois da exclusão
+        // o profile pode ser removido por cascade.
+        //
+        // Falha na auditoria NÃO impede a exclusão.
+        // ========================================================
+
+        const {
+            error:
+            auditError,
+        } =
+            await admin
+                .from(
+                    "user_access_audit"
+                )
+                .insert({
+                    user_id:
+                        targetUserId,
+
+                    actor_user_id:
+                        actorUserId,
+
+                    event_type:
+                        "user_deleted",
+
+                    description:
+                        `Usuário ${targetProfile.full_name ?? targetProfile.email ?? targetUserId} excluído pelo Superadministrador.`,
+
+                    metadata: {
+                        email:
+                            targetProfile.email,
+
+                        full_name:
+                            targetProfile.full_name,
+
+                        roles:
+                            targetRoles,
+                    },
+                });
+
+        if (
+            auditError
+        ) {
+            console.error(
+                "Não foi possível registrar auditoria antes da exclusão:",
+                auditError
+            );
+        }
+
+        // ========================================================
+        // EXCLUIR DO SUPABASE AUTH
+        // ========================================================
+        //
+        // Essa é a exclusão real da conta.
+        //
+        // Em uma estrutura padrão:
+        //
+        // auth.users
+        //    ↓ ON DELETE CASCADE
+        // profiles
+        // user_roles
+        //
+        // também são removidos.
+        // ========================================================
+
+        const {
+            error:
+            authDeleteError,
+        } =
+            await admin.auth.admin.deleteUser(
+                targetUserId
+            );
+
+        if (
+            authDeleteError
+        ) {
+            console.error(
+                "Erro ao excluir usuário do Supabase Auth:",
+                authDeleteError
+            );
+
+            return {
+                success: false,
+                error:
+                    "Não foi possível excluir a conta do usuário.",
+            };
+        }
+
+        // ========================================================
+        // LIMPEZA DE SEGURANÇA
+        // ========================================================
+        //
+        // Caso profiles/user_roles não estejam configurados com
+        // ON DELETE CASCADE, tentamos remover os registros
+        // restantes.
+        //
+        // Se já tiverem sido removidos pelo banco, essas operações
+        // simplesmente afetarão zero registros.
+        // ========================================================
+
+        const {
+            error:
+            rolesCleanupError,
+        } =
+            await admin
+                .from(
+                    "user_roles"
+                )
+                .delete()
+                .eq(
+                    "user_id",
+                    targetUserId
+                );
+
+        if (
+            rolesCleanupError
+        ) {
+            console.error(
+                "Aviso ao limpar user_roles:",
+                rolesCleanupError
+            );
+        }
+
+        const {
+            error:
+            profileCleanupError,
+        } =
+            await admin
+                .from(
+                    "profiles"
+                )
+                .delete()
+                .eq(
+                    "id",
+                    targetUserId
+                );
+
+        if (
+            profileCleanupError
+        ) {
+            console.error(
+                "Aviso ao limpar profile:",
+                profileCleanupError
+            );
+        }
+
+        // ========================================================
+        // REVALIDAR
+        // ========================================================
+
+        revalidatePath(
+            "/administracao/usuarios"
+        );
+
+        return {
+            success: true,
+            error:
+                null,
+
+            message:
+                "Usuário excluído com sucesso.",
+        };
+    } catch (
+    error
+    ) {
+        console.error(
+            "Erro ao excluir usuário:",
+            error
+        );
+
+        return {
+            success: false,
+
+            error:
+                error instanceof
+                    Error
+                    ? error.message
+                    : "Não foi possível excluir o usuário.",
         };
     }
 }
@@ -1009,14 +1507,19 @@ function normalizeOptional(
 ) {
     const result =
         String(
-            value ?? ""
+            value ??
+            ""
         ).trim();
 
-    return result || null;
+    return (
+        result ||
+        null
+    );
 }
 
 function isValidEmail(
-    email: string
+    email:
+        string
 ) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
         email
