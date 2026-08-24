@@ -784,17 +784,56 @@ function getUploadedFile(
 async function parseSiengeWorkbook(
     file: File
 ) {
+    // ========================================================
+    // FILE -> ARRAYBUFFER
+    // ========================================================
+
+    const arrayBuffer =
+        await file.arrayBuffer();
+
+    // ========================================================
+    // ARRAYBUFFER -> BUFFER NODE
+    // ========================================================
+    //
+    // Em runtime o ExcelJS trabalha normalmente com este
+    // Buffer.
+    //
+    // O TypeScript/Node atual, porém, tipa este valor como
+    // Buffer<ArrayBuffer>, enquanto algumas versões do ExcelJS
+    // ainda possuem uma definição de Buffer incompatível.
+    //
+    // Por isso usamos abaixo o tipo exato exigido pelo método
+    // load() da versão instalada do ExcelJS.
+    // ========================================================
+
     const buffer =
         Buffer.from(
-            await file.arrayBuffer()
+            arrayBuffer
         );
 
     const workbook =
         new ExcelJS.Workbook();
 
+    // ========================================================
+    // TIPO DO PARÂMETRO DO EXCELJS
+    // ========================================================
+
+    type ExcelLoadInput =
+        Parameters<
+            typeof workbook.xlsx.load
+        >[0];
+
+    // ========================================================
+    // CARREGA O WORKBOOK
+    // ========================================================
+
     await workbook.xlsx.load(
-        buffer
+        buffer as unknown as ExcelLoadInput
     );
+
+    // ========================================================
+    // VALIDA PLANILHAS
+    // ========================================================
 
     if (
         workbook.worksheets.length ===
@@ -835,6 +874,10 @@ async function parseSiengeWorkbook(
             ) ===
             index
     );
+
+    // ========================================================
+    // PROCURA ABA COMPATÍVEL
+    // ========================================================
 
     for (
         const worksheet
