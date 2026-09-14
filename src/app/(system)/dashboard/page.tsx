@@ -8,22 +8,19 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  ArrowUpRight,
-  Bell,
-  Check,
   CheckCircle2,
-  ChevronRight,
   Clock3,
+  CreditCard,
   FileSpreadsheet,
   ListTodo,
+  PackageCheck,
   PackageSearch,
   Plus,
-  RotateCcw,
-  Send,
+  ReceiptText,
+  ShieldCheck,
   ShoppingCart,
   Sparkles,
   Truck,
-  TrendingUp,
   UserRoundX,
   UsersRound,
   WalletCards,
@@ -35,25 +32,12 @@ import {
 } from "@/lib/supabase/server";
 
 import {
-  buildPendingSummary,
-} from "@/lib/pendencias/summary";
-
-import {
-  MotionList,
-  MotionListItem,
   MotionReveal,
-  MotionScaleIn,
   MotionStagger,
   MotionStaggerItem,
-  MotionStatus,
-  MotionSurface,
 } from "@/components/ui/motion";
 
 import AnimatedNumber from "@/components/ui/projeta/animated-number";
-
-import AnimatedProgress from "@/components/ui/projeta/animated-progress";
-
-import AnimatedRadialProgress from "@/components/ui/projeta/animated-radial-progress";
 
 // ============================================================
 // TIPOS
@@ -78,7 +62,9 @@ type NotificationRow = {
     | string
     | null;
 
-  level: string;
+  level:
+    | string
+    | null;
 
   action_url:
     | string
@@ -87,14 +73,154 @@ type NotificationRow = {
   created_at: string;
 };
 
-type NotificationSummaryRow = {
+type CardRequestRow = {
   id: string;
 
-  level:
+  request_number:
     | string
     | null;
 
-  read_at:
+  requester_id:
+    | string
+    | null;
+
+  request_date:
+    | string
+    | null;
+
+  sienge_request_number:
+    | string
+    | null;
+
+  cost_center_or_site:
+    | string
+    | null;
+
+  purpose:
+    | string
+    | null;
+
+  estimated_amount:
+    | number
+    | string
+    | null;
+
+  approved_amount:
+    | number
+    | string
+    | null;
+
+  status: string;
+
+  expected_return_date:
+    | string
+    | null;
+
+  created_at:
+    | string
+    | null;
+
+  updated_at:
+    | string
+    | null;
+};
+
+type SiengeRequestRow = {
+  request_key: string;
+
+  sc_number:
+    | string
+    | null;
+
+  requester_profile_id:
+    | string
+    | null;
+
+  requester_sienge_username:
+    | string
+    | null;
+
+  cost_center_or_site:
+    | string
+    | null;
+
+  request_date:
+    | string
+    | null;
+
+  items_count:
+    | number
+    | null;
+
+  orders_count:
+    | number
+    | null;
+
+  tracking_status:
+    | string
+    | null;
+
+  next_delivery_forecast:
+    | string
+    | null;
+};
+
+type CardSiengeLinkRow = {
+  id: string;
+
+  card_request_id: string;
+
+  sienge_request_number: string;
+
+  sienge_request_key:
+    | string
+    | null;
+
+  link_status: string;
+
+  conflict_reason:
+    | string
+    | null;
+};
+
+type SiengeItemRow = {
+  id: string;
+
+  sc_number:
+    | string
+    | null;
+
+  requester_profile_id:
+    | string
+    | null;
+
+  delivery_status:
+    | string
+    | null;
+};
+
+type DeliveryConfirmationRow = {
+  item_id: string;
+
+  requester_profile_id: string;
+
+  delivery_status:
+    | string
+    | null;
+};
+
+type SlaRow = {
+  item_id: string;
+
+  sc_number:
+    | string
+    | null;
+
+  tracking_status:
+    | string
+    | null;
+
+  sla_status:
     | string
     | null;
 };
@@ -109,113 +235,60 @@ type SiengeUserRow = {
     | null;
 };
 
-type SlaRow = {
-  item_id: string;
+type UserStage =
+  | "action"
+  | "progress"
+  | "completed";
 
-  sc_number:
+type UserProcess = {
+  key: string;
+
+  type:
+    | "card"
+    | "purchase"
+    | "combined";
+
+  stage: UserStage;
+
+  number: string;
+
+  scNumber:
     | string
     | null;
 
-  delivery_or_pickup_forecast:
+  title: string;
+
+  status: string;
+
+  description: string;
+
+  href: string;
+
+  actionLabel: string;
+
+  date:
     | string
     | null;
 
-  tracking_status:
-    | string
-    | null;
-
-  sla_status:
-    | string
-    | null;
-
-  elapsed_hours:
-    | string
-    | number
-    | null;
+  sortDate: string;
 };
 
-// ============================================================
-// FLUXO
-// ============================================================
+type PriorityItem = {
+  icon: LucideIcon;
 
-const flowStatuses = [
-  {
-    label:
-      "Recebida",
+  title: string;
 
-    shortLabel:
-      "Recebida",
+  description: string;
 
-    key:
-      "Solicitação recebida",
-  },
+  count: number;
 
-  {
-    label:
-      "Em cotação",
+  href: string;
 
-    shortLabel:
-      "Cotação",
-
-    key:
-      "Em cotação",
-  },
-
-  {
-    label:
-      "Em aprovação",
-
-    shortLabel:
-      "Aprovação",
-
-    key:
-      "Em aprovação",
-  },
-
-  {
-    label:
-      "Compra realizada",
-
-    shortLabel:
-      "Compra",
-
-    key:
-      "Compra realizada",
-  },
-
-  {
-    label:
-      "Compra via cartão",
-
-    shortLabel:
-      "Cartão",
-
-    key:
-      "Compra via cartão",
-  },
-
-  {
-    label:
-      "Entrega / Retirada",
-
-    shortLabel:
-      "Logística",
-
-    key:
-      "delivery",
-  },
-
-  {
-    label:
-      "Entregue",
-
-    shortLabel:
-      "Entregue",
-
-    key:
-      "Entregue",
-  },
-];
+  tone:
+    | "error"
+    | "warning"
+    | "neutral";
+};
 
 // ============================================================
 // PAGE
@@ -226,26 +299,34 @@ export default async function DashboardPage() {
     await createClient();
 
   // =========================================================
-  // AUTH
+  // AUTENTICAÇÃO
   // =========================================================
 
   const {
     data:
       claimsData,
+
+    error:
+      claimsError,
   } =
     await supabase.auth.getClaims();
 
   const userId =
-    claimsData?.claims?.sub;
+    claimsData
+      ?.claims
+      ?.sub;
 
-  if (!userId) {
+  if (
+    claimsError ||
+    !userId
+  ) {
     redirect(
       "/login"
     );
   }
 
   // =========================================================
-  // PROFILE + ROLES
+  // PERFIL + PAPÉIS
   // =========================================================
 
   const [
@@ -319,420 +400,10 @@ export default async function DashboardPage() {
       "superadmin"
     );
 
-  // =========================================================
-  // CONSULTAS
-  // =========================================================
-
-  const requestsPromise =
-    supabase
-      .from(
-        "v_sienge_request_summary"
-      )
-      .select(
-        "*"
-      )
-      .order(
-        "request_date",
-        {
-          ascending:
-            false,
-
-          nullsFirst:
-            false,
-        }
-      );
-
-  const slaPromise =
-    supabase
-      .from(
-        "v_sienge_item_sla"
-      )
-      .select(
-        `
-        item_id,
-        sc_number,
-        delivery_or_pickup_forecast,
-        tracking_status,
-        sla_status,
-        elapsed_hours
-        `
-      );
-
-  const siengeUsersPromise =
-    canFinance
-      ? supabase
-          .from(
-            "sienge_purchase_items"
-          )
-          .select(
-            `
-            requester_sienge_username,
-            requester_profile_id
-            `
-          )
-          .not(
-            "requester_sienge_username",
-            "is",
-            null
-          )
-      : Promise.resolve(
-          {
-            data:
-              [] as SiengeUserRow[],
-
-            error:
-              null,
-          }
-        );
-
-  let notificationsQuery =
-    supabase
-      .from(
-        "system_notifications"
-      )
-      .select(
-        `
-        id,
-        title,
-        message,
-        level,
-        action_url,
-        created_at
-        `
-      )
-      .order(
-        "created_at",
-        {
-          ascending:
-            false,
-        }
-      )
-      .limit(
-        7
-      );
-
-  let notificationSummaryQuery =
-    supabase
-      .from(
-        "system_notifications"
-      )
-      .select(
-        `
-        id,
-        level,
-        read_at
-        `
-      );
-
-  if (!canFinance) {
-    notificationsQuery =
-      notificationsQuery.eq(
-        "user_id",
-        userId
-      );
-
-    notificationSummaryQuery =
-      notificationSummaryQuery.eq(
-        "user_id",
-        userId
-      );
-  }
-
-  const [
-    requestsResult,
-    slaResult,
-    siengeUsersResult,
-    notificationsResult,
-    notificationSummaryResult,
-  ] =
-    await Promise.all([
-      requestsPromise,
-      slaPromise,
-      siengeUsersPromise,
-      notificationsQuery,
-      notificationSummaryQuery,
-    ]);
-
-  // =========================================================
-  // ERROS
-  // =========================================================
-
-  if (
-    requestsResult.error
-  ) {
-    console.error(
-      "Erro ao carregar pedidos:",
-      requestsResult.error
-    );
-  }
-
-  if (
-    slaResult.error
-  ) {
-    console.error(
-      "Erro ao carregar SLA:",
-      slaResult.error
-    );
-  }
-
-  if (
-    siengeUsersResult.error
-  ) {
-    console.error(
-      "Erro ao carregar usuários Sienge:",
-      siengeUsersResult.error
-    );
-  }
-
-  if (
-    notificationsResult.error
-  ) {
-    console.error(
-      "Erro ao carregar atividade:",
-      notificationsResult.error
-    );
-  }
-
-  if (
-    notificationSummaryResult.error
-  ) {
-    console.error(
-      "Erro ao carregar resumo de notificações:",
-      notificationSummaryResult.error
-    );
-  }
-
-  // =========================================================
-  // DADOS
-  // =========================================================
-
-  const requests =
-    requestsResult.data ??
-    [];
-
-  const slaRows =
-    (
-      slaResult.data ??
-      []
-    ) as SlaRow[];
-
-  const siengeRows =
-    (
-      siengeUsersResult.data ??
-      []
-    ) as SiengeUserRow[];
-
-  const recentActivity =
-    (
-      notificationsResult.data ??
-      []
-    ) as NotificationRow[];
-
-  const notificationSummary =
-    (
-      notificationSummaryResult.data ??
-      []
-    ) as NotificationSummaryRow[];
-
-  // =========================================================
-  // PENDÊNCIAS — FONTE ÚNICA
-  // =========================================================
-
-  const pendingSummary =
-    buildPendingSummary(
-      {
-        slaRows,
-
-        siengeUsers:
-          siengeRows,
-
-        notifications:
-          notificationSummary,
-
-        canFinance,
-      }
-    );
-
-  const pendingCount =
-    pendingSummary.total;
-
-  const criticalCount =
-    pendingSummary.critical;
-
-  const attentionCount =
-    pendingSummary.attention;
-
-  const pendingCategories =
-    pendingSummary.categories;
-
-  // =========================================================
-  // MÉTRICAS
-  // =========================================================
-
-  const totalRequests =
-    requests.length;
-
-  const delivered =
-    requests.filter(
-      (
-        item
-      ) =>
-        item.tracking_status ===
-        "Entregue"
-    ).length;
-
-  const inProgress =
-    Math.max(
-      0,
-      totalRequests -
-        delivered
-    );
-
-  const completionRate =
-    totalRequests >
-    0
-      ? Math.round(
-          (
-            delivered /
-            totalRequests
-          ) *
-            100
-        )
-      : 0;
-
-  // =========================================================
-  // SLA
-  // =========================================================
-
-  const onTimeItems =
-    slaRows.filter(
-      (
-        item
-      ) =>
-        item.sla_status ===
-        "on_time"
-    );
-
-  const warningItems =
-    slaRows.filter(
-      (
-        item
-      ) =>
-        item.sla_status ===
-        "warning"
-    );
-
-  const overdueItems =
-    slaRows.filter(
-      (
-        item
-      ) =>
-        item.sla_status ===
-        "overdue"
-    );
-
-  const activeSlaItems =
-    slaRows.filter(
-      (
-        item
-      ) =>
-        [
-          "on_time",
-          "warning",
-          "overdue",
-        ].includes(
-          item.sla_status ??
-            ""
-        )
-    );
-
-  const onTimeRate =
-    activeSlaItems.length >
-    0
-      ? Math.round(
-          (
-            onTimeItems.length /
-            activeSlaItems.length
-          ) *
-            100
-        )
-      : 100;
-
-  const warningRate =
-    activeSlaItems.length >
-    0
-      ? Math.round(
-          (
-            warningItems.length /
-            activeSlaItems.length
-          ) *
-            100
-        )
-      : 0;
-
-  const overdueRate =
-    activeSlaItems.length >
-    0
-      ? Math.round(
-          (
-            overdueItems.length /
-            activeSlaItems.length
-          ) *
-            100
-        )
-      : 0;
-
-  // =========================================================
-  // FLUXO
-  // =========================================================
-
-  const flowData =
-    flowStatuses.map(
-      (
-        statusItem
-      ) => {
-        const count =
-          statusItem.key ===
-          "delivery"
-            ? requests.filter(
-                (
-                  request
-                ) =>
-                  request.tracking_status ===
-                    "Disponível para retirada" ||
-                  request.tracking_status ===
-                    "Em processo de entrega"
-              ).length
-            : requests.filter(
-                (
-                  request
-                ) =>
-                  request.tracking_status ===
-                  statusItem.key
-              ).length;
-
-        return {
-          ...statusItem,
-          count,
-        };
-      }
-    );
-
-  // =========================================================
-  // LINKS
-  // =========================================================
-
-  const operationHref =
-    canFinance
-      ? "/financeiro/sienge?tab=pedidos"
-      : "/meus-pedidos";
-
-  // =========================================================
-  // USER
-  // =========================================================
-
   const fullName =
-    profile?.full_name?.trim() ||
+    profile
+      ?.full_name
+      ?.trim() ||
     "Usuário";
 
   const firstName =
@@ -749,8 +420,1359 @@ export default async function DashboardPage() {
     formatCurrentDate();
 
   // =========================================================
-  // RENDER
+  // DASHBOARD FINANCEIRO
   // =========================================================
+
+  if (
+    canFinance
+  ) {
+    const [
+      cardsResult,
+      siengeResult,
+      linksResult,
+      slaResult,
+      siengeUsersResult,
+      notificationsResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "card_requests"
+          )
+          .select(
+            `
+            id,
+            request_number,
+            requester_id,
+            request_date,
+            sienge_request_number,
+            cost_center_or_site,
+            purpose,
+            estimated_amount,
+            approved_amount,
+            status,
+            expected_return_date,
+            created_at,
+            updated_at
+            `
+          )
+          .is(
+            "deleted_at",
+            null
+          ),
+
+        supabase
+          .from(
+            "v_sienge_request_summary"
+          )
+          .select(
+            `
+            request_key,
+            sc_number,
+            requester_profile_id,
+            requester_sienge_username,
+            cost_center_or_site,
+            request_date,
+            items_count,
+            orders_count,
+            tracking_status,
+            next_delivery_forecast
+            `
+          ),
+
+        supabase
+          .from(
+            "card_sienge_links"
+          )
+          .select(
+            `
+            id,
+            card_request_id,
+            sienge_request_number,
+            sienge_request_key,
+            link_status,
+            conflict_reason
+            `
+          ),
+
+        supabase
+          .from(
+            "v_sienge_item_sla"
+          )
+          .select(
+            `
+            item_id,
+            sc_number,
+            tracking_status,
+            sla_status
+            `
+          ),
+
+        supabase
+          .from(
+            "sienge_purchase_items"
+          )
+          .select(
+            `
+            requester_sienge_username,
+            requester_profile_id
+            `
+          )
+          .not(
+            "requester_sienge_username",
+            "is",
+            null
+          ),
+
+        supabase
+          .from(
+            "system_notifications"
+          )
+          .select(
+            `
+            id,
+            title,
+            message,
+            level,
+            action_url,
+            created_at
+            `
+          )
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          )
+          .limit(
+            6
+          ),
+      ]);
+
+    logQueryError(
+      "solicitações de cartão",
+      cardsResult.error
+    );
+
+    logQueryError(
+      "solicitações Sienge",
+      siengeResult.error
+    );
+
+    logQueryError(
+      "conciliações",
+      linksResult.error
+    );
+
+    logQueryError(
+      "SLA",
+      slaResult.error
+    );
+
+    logQueryError(
+      "usuários Sienge",
+      siengeUsersResult.error
+    );
+
+    logQueryError(
+      "notificações",
+      notificationsResult.error
+    );
+
+    const cards =
+      (
+        cardsResult.data ??
+        []
+      ) as CardRequestRow[];
+
+    const siengeRequests =
+      (
+        siengeResult.data ??
+        []
+      ) as SiengeRequestRow[];
+
+    const links =
+      (
+        linksResult.data ??
+        []
+      ) as CardSiengeLinkRow[];
+
+    const slaRows =
+      (
+        slaResult.data ??
+        []
+      ) as SlaRow[];
+
+    const siengeUsers =
+      (
+        siengeUsersResult.data ??
+        []
+      ) as SiengeUserRow[];
+
+    const notifications =
+      (
+        notificationsResult.data ??
+        []
+      ) as NotificationRow[];
+
+    // =======================================================
+    // INDICADORES FINANCEIROS
+    // =======================================================
+
+    const submittedCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          request.status ===
+          "submitted"
+      ).length;
+
+    const reviewCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          request.status ===
+          "under_review"
+      ).length;
+
+    const approvalCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          request.status ===
+          "awaiting_approval"
+      ).length;
+
+    const inUseCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          [
+            "card_delivered",
+            "in_use",
+          ].includes(
+            request.status
+          )
+      ).length;
+
+    const awaitingReturnCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          request.status ===
+          "awaiting_return"
+      ).length;
+
+    const conferenceCount =
+      cards.filter(
+        (
+          request
+        ) =>
+          request.status ===
+          "accountability_review"
+      ).length;
+
+    const conflictCount =
+      links.filter(
+        (
+          link
+        ) =>
+          link.link_status ===
+          "conflict"
+      ).length;
+
+    const pendingLinkCount =
+      links.filter(
+        (
+          link
+        ) =>
+          [
+            "pending",
+            "not_found",
+          ].includes(
+            link.link_status
+          )
+      ).length;
+
+    const linkedCount =
+      links.filter(
+        (
+          link
+        ) =>
+          link.link_status ===
+          "linked"
+      ).length;
+
+    const overdueCount =
+      slaRows.filter(
+        (
+          item
+        ) =>
+          item.sla_status ===
+          "overdue"
+      ).length;
+
+    const warningCount =
+      slaRows.filter(
+        (
+          item
+        ) =>
+          item.sla_status ===
+          "warning"
+      ).length;
+
+    const onTimeCount =
+      slaRows.filter(
+        (
+          item
+        ) =>
+          item.sla_status ===
+          "on_time"
+      ).length;
+
+    const activeSlaCount =
+      onTimeCount +
+      warningCount +
+      overdueCount;
+
+    const onTimeRate =
+      activeSlaCount >
+      0
+        ? Math.round(
+            (
+              onTimeCount /
+              activeSlaCount
+            ) *
+              100
+          )
+        : 100;
+
+    const purchaseDeliveryCount =
+      siengeRequests.filter(
+        (
+          request
+        ) =>
+          [
+            "Compra realizada",
+            "Compra via cartão",
+            "Disponível para retirada",
+            "Em processo de entrega",
+          ].includes(
+            request.tracking_status ??
+              ""
+          )
+      ).length;
+
+    const unmatchedUsers =
+      new Set(
+        siengeUsers
+          .filter(
+            (
+              item
+            ) =>
+              item
+                .requester_sienge_username &&
+              !item
+                .requester_profile_id
+          )
+          .map(
+            (
+              item
+            ) =>
+              normalize(
+                item
+                  .requester_sienge_username
+              )
+          )
+          .filter(
+            Boolean
+          )
+      ).size;
+
+    const priorities:
+      PriorityItem[] = [
+      {
+        icon:
+          FileSpreadsheet,
+
+        title:
+          "Novas solicitações",
+
+        description:
+          "Solicitações de cartão aguardando início da análise.",
+
+        count:
+          submittedCount,
+
+        href:
+          "/financeiro/solicitacoes?view=cards&status=submitted",
+
+        tone:
+          "neutral",
+      },
+
+      {
+        icon:
+          Truck,
+
+        title:
+          "Cartões aguardando devolução",
+
+        description:
+          "Solicitantes precisam realizar a devolução do cartão.",
+
+        count:
+          awaitingReturnCount,
+
+        href:
+          "/financeiro/solicitacoes?view=cards&status=awaiting_return",
+
+        tone:
+          "warning",
+      },
+
+      {
+        icon:
+          AlertTriangle,
+
+        title:
+          "Conciliações para revisar",
+
+        description:
+          "Vínculos Cartão × Sienge com divergências.",
+
+        count:
+          conflictCount,
+
+        href:
+          "/financeiro/solicitacoes?view=reconciliation&linkStatus=conflict",
+
+        tone:
+          "error",
+      },
+
+      {
+        icon:
+          Clock3,
+
+        title:
+          "Aguardando vínculo Sienge",
+
+        description:
+          "Número Sienge informado, mas ainda não conciliado.",
+
+        count:
+          pendingLinkCount,
+
+        href:
+          "/financeiro/solicitacoes?view=reconciliation",
+
+        tone:
+          "warning",
+      },
+
+      {
+        icon:
+          ListTodo,
+
+        title:
+          "Itens com SLA vencido",
+
+        description:
+          "Itens do acompanhamento Sienge fora do prazo.",
+
+        count:
+          overdueCount,
+
+        href:
+          "/pendencias",
+
+        tone:
+          "error",
+      },
+    ];
+
+    return (
+      <FinanceDashboard
+        firstName={
+          firstName
+        }
+        today={
+          today
+        }
+        cardsCount={
+          cards.length
+        }
+        siengeCount={
+          siengeRequests.length
+        }
+        submittedCount={
+          submittedCount
+        }
+        reviewCount={
+          reviewCount
+        }
+        approvalCount={
+          approvalCount
+        }
+        inUseCount={
+          inUseCount
+        }
+        awaitingReturnCount={
+          awaitingReturnCount
+        }
+        conferenceCount={
+          conferenceCount
+        }
+        conflictCount={
+          conflictCount
+        }
+        pendingLinkCount={
+          pendingLinkCount
+        }
+        linkedCount={
+          linkedCount
+        }
+        purchaseDeliveryCount={
+          purchaseDeliveryCount
+        }
+        overdueCount={
+          overdueCount
+        }
+        warningCount={
+          warningCount
+        }
+        onTimeCount={
+          onTimeCount
+        }
+        onTimeRate={
+          onTimeRate
+        }
+        unmatchedUsers={
+          unmatchedUsers
+        }
+        priorities={
+          priorities
+        }
+        notifications={
+          notifications
+        }
+        canAdmin={
+          canAdmin
+        }
+      />
+    );
+  }
+
+  // =========================================================
+  // DASHBOARD DO SOLICITANTE
+  // =========================================================
+
+  const [
+    cardsResult,
+    siengeResult,
+    itemsResult,
+    notificationsResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "card_requests"
+        )
+        .select(
+          `
+          id,
+          request_number,
+          requester_id,
+          request_date,
+          sienge_request_number,
+          cost_center_or_site,
+          purpose,
+          estimated_amount,
+          approved_amount,
+          status,
+          expected_return_date,
+          created_at,
+          updated_at
+          `
+        )
+        .eq(
+          "requester_id",
+          userId
+        )
+        .is(
+          "deleted_at",
+          null
+        ),
+
+      supabase
+        .from(
+          "v_sienge_request_summary"
+        )
+        .select(
+          `
+          request_key,
+          sc_number,
+          requester_profile_id,
+          requester_sienge_username,
+          cost_center_or_site,
+          request_date,
+          items_count,
+          orders_count,
+          tracking_status,
+          next_delivery_forecast
+          `
+        )
+        .eq(
+          "requester_profile_id",
+          userId
+        ),
+
+      supabase
+        .from(
+          "sienge_purchase_items"
+        )
+        .select(
+          `
+          id,
+          sc_number,
+          requester_profile_id,
+          delivery_status
+          `
+        )
+        .eq(
+          "requester_profile_id",
+          userId
+        ),
+
+      supabase
+        .from(
+          "system_notifications"
+        )
+        .select(
+          `
+          id,
+          title,
+          message,
+          level,
+          action_url,
+          created_at
+          `
+        )
+        .eq(
+          "user_id",
+          userId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          5
+        ),
+    ]);
+
+  logQueryError(
+    "cartões do usuário",
+    cardsResult.error
+  );
+
+  logQueryError(
+    "pedidos Sienge do usuário",
+    siengeResult.error
+  );
+
+  logQueryError(
+    "itens Sienge do usuário",
+    itemsResult.error
+  );
+
+  logQueryError(
+    "notificações do usuário",
+    notificationsResult.error
+  );
+
+  const cards =
+    (
+      cardsResult.data ??
+      []
+    ) as CardRequestRow[];
+
+  const siengeRequests =
+    (
+      siengeResult.data ??
+      []
+    ) as SiengeRequestRow[];
+
+  const siengeItems =
+    (
+      itemsResult.data ??
+      []
+    ) as SiengeItemRow[];
+
+  const notifications =
+    (
+      notificationsResult.data ??
+      []
+    ) as NotificationRow[];
+
+  // =========================================================
+  // VÍNCULOS DO PRÓPRIO USUÁRIO
+  // =========================================================
+
+  const cardIds =
+    cards.map(
+      (
+        card
+      ) =>
+        card.id
+    );
+
+  let links:
+    CardSiengeLinkRow[] =
+    [];
+
+  if (
+    cardIds.length >
+    0
+  ) {
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "card_sienge_links"
+        )
+        .select(
+          `
+          id,
+          card_request_id,
+          sienge_request_number,
+          sienge_request_key,
+          link_status,
+          conflict_reason
+          `
+        )
+        .in(
+          "card_request_id",
+          cardIds
+        );
+
+    logQueryError(
+      "vínculos do usuário",
+      error
+    );
+
+    links =
+      (
+        data ??
+        []
+      ) as CardSiengeLinkRow[];
+  }
+
+  // =========================================================
+  // CONFIRMAÇÕES DE RECEBIMENTO
+  // =========================================================
+
+  const itemIds =
+    siengeItems.map(
+      (
+        item
+      ) =>
+        item.id
+    );
+
+  let confirmations:
+    DeliveryConfirmationRow[] =
+    [];
+
+  if (
+    itemIds.length >
+    0
+  ) {
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "sienge_requester_delivery_confirmations"
+        )
+        .select(
+          `
+          item_id,
+          requester_profile_id,
+          delivery_status
+          `
+        )
+        .eq(
+          "requester_profile_id",
+          userId
+        )
+        .in(
+          "item_id",
+          itemIds
+        );
+
+    logQueryError(
+      "confirmações de recebimento",
+      error
+    );
+
+    confirmations =
+      (
+        data ??
+        []
+      ) as DeliveryConfirmationRow[];
+  }
+
+  // =========================================================
+  // RECEBIMENTOS PENDENTES
+  // =========================================================
+
+  const confirmationByItem =
+    new Map(
+      confirmations.map(
+        (
+          confirmation
+        ) => [
+          confirmation.item_id,
+          confirmation,
+        ]
+      )
+    );
+
+  const receiptPendingScs =
+    new Set<string>();
+
+  for (
+    const item
+    of siengeItems
+  ) {
+    if (
+      normalize(
+        item.delivery_status
+      ) !==
+      "ENTREGUE"
+    ) {
+      continue;
+    }
+
+    const confirmation =
+      confirmationByItem.get(
+        item.id
+      );
+
+    if (
+      normalize(
+        confirmation
+          ?.delivery_status
+      ) !==
+      "ENTREGUE"
+    ) {
+      const sc =
+        normalize(
+          item.sc_number
+        );
+
+      if (
+        sc
+      ) {
+        receiptPendingScs.add(
+          sc
+        );
+      }
+    }
+  }
+
+  // =========================================================
+  // UNIFICAR CARTÃO + SIENGE
+  // =========================================================
+
+  const linkByCard =
+    new Map(
+      links.map(
+        (
+          link
+        ) => [
+          link.card_request_id,
+          link,
+        ]
+      )
+    );
+
+  const siengeByKey =
+    new Map(
+      siengeRequests.map(
+        (
+          request
+        ) => [
+          request.request_key,
+          request,
+        ]
+      )
+    );
+
+  const linkedSiengeKeys =
+    new Set<string>();
+
+  const processes:
+    UserProcess[] = [];
+
+  for (
+    const card
+    of cards
+  ) {
+    const link =
+      linkByCard.get(
+        card.id
+      );
+
+    const sienge =
+      link
+        ?.link_status ===
+          "linked" &&
+        link.sienge_request_key
+          ? siengeByKey.get(
+              link.sienge_request_key
+            ) ??
+            null
+          : null;
+
+    if (
+      sienge
+    ) {
+      linkedSiengeKeys.add(
+        sienge.request_key
+      );
+    }
+
+    const scNumber =
+      sienge?.sc_number ??
+      card.sienge_request_number ??
+      null;
+
+    const receiptPending =
+      Boolean(
+        scNumber &&
+        receiptPendingScs.has(
+          normalize(
+            scNumber
+          )
+        )
+      );
+
+    const cardNeedsAction =
+      [
+        "awaiting_information",
+        "awaiting_return",
+      ].includes(
+        card.status
+      );
+
+    let stage:
+      UserStage =
+      "progress";
+
+    if (
+      cardNeedsAction ||
+      receiptPending
+    ) {
+      stage =
+        "action";
+    } else if (
+      sienge
+    ) {
+      stage =
+        normalize(
+          sienge.tracking_status
+        ) ===
+        "ENTREGUE"
+          ? "completed"
+          : "progress";
+    } else if (
+      [
+        "completed",
+        "cancelled",
+        "rejected",
+      ].includes(
+        card.status
+      )
+    ) {
+      stage =
+        "completed";
+    }
+
+    let status =
+      getCardStatusLabel(
+        card.status
+      );
+
+    let description =
+      getCardDescription(
+        card.status
+      );
+
+    let href =
+      `/solicitacoes/${encodeURIComponent(
+        card.id
+      )}`;
+
+    let actionLabel =
+      "Ver solicitação";
+
+    if (
+      card.status ===
+      "awaiting_return"
+    ) {
+      href =
+        "/devolucoes";
+
+      actionLabel =
+        "Fazer devolução";
+    } else if (
+      receiptPending &&
+      sienge
+    ) {
+      status =
+        "Recebimento aguardando confirmação";
+
+      description =
+        "O material foi entregue e precisa da sua confirmação.";
+
+      href =
+        `/meus-pedidos/${encodeURIComponent(
+          sienge.request_key
+        )}`;
+
+      actionLabel =
+        "Confirmar recebimento";
+    } else if (
+      sienge
+    ) {
+      status =
+        sienge.tracking_status ??
+        status;
+
+      description =
+        getSiengeDescription(
+          sienge.tracking_status
+        );
+
+      href =
+        `/meus-pedidos/${encodeURIComponent(
+          sienge.request_key
+        )}`;
+
+      actionLabel =
+        "Acompanhar";
+    }
+
+    processes.push({
+      key:
+        `card-${card.id}`,
+
+      type:
+        sienge
+          ? "combined"
+          : "card",
+
+      stage,
+
+      number:
+        card.request_number ??
+        "Solicitação",
+
+      scNumber,
+
+      title:
+        card.purpose ??
+        "Solicitação de cartão",
+
+      status,
+
+      description,
+
+      href,
+
+      actionLabel,
+
+      date:
+        card.request_date ??
+        card.created_at,
+
+      sortDate:
+        card.updated_at ??
+        card.created_at ??
+        card.request_date ??
+        "",
+    });
+  }
+
+  // =========================================================
+  // SIENGE SEM CARTÃO
+  // =========================================================
+
+  for (
+    const request
+    of siengeRequests
+  ) {
+    if (
+      linkedSiengeKeys.has(
+        request.request_key
+      )
+    ) {
+      continue;
+    }
+
+    const receiptPending =
+      Boolean(
+        request.sc_number &&
+        receiptPendingScs.has(
+          normalize(
+            request.sc_number
+          )
+        )
+      );
+
+    const delivered =
+      normalize(
+        request.tracking_status
+      ) ===
+      "ENTREGUE";
+
+    const stage:
+      UserStage =
+      receiptPending
+        ? "action"
+        : delivered
+          ? "completed"
+          : "progress";
+
+    processes.push({
+      key:
+        `sienge-${request.request_key}`,
+
+      type:
+        "purchase",
+
+      stage,
+
+      number:
+        request.sc_number
+          ? `SC ${request.sc_number}`
+          : "Solicitação de compra",
+
+      scNumber:
+        request.sc_number,
+
+      title:
+        request.cost_center_or_site ??
+        "Solicitação de compra",
+
+      status:
+        receiptPending
+          ? "Recebimento aguardando confirmação"
+          : request.tracking_status ??
+            "Em acompanhamento",
+
+      description:
+        receiptPending
+          ? "O material foi entregue e precisa da sua confirmação."
+          : getSiengeDescription(
+              request.tracking_status
+            ),
+
+      href:
+        `/meus-pedidos/${encodeURIComponent(
+          request.request_key
+        )}`,
+
+      actionLabel:
+        receiptPending
+          ? "Confirmar recebimento"
+          : "Acompanhar",
+
+      date:
+        request.request_date,
+
+      sortDate:
+        request.request_date ??
+        "",
+    });
+  }
+
+  // =========================================================
+  // ORDENAR
+  // =========================================================
+
+  const stageWeight:
+    Record<
+      UserStage,
+      number
+    > = {
+    action: 0,
+    progress: 1,
+    completed: 2,
+  };
+
+  processes.sort(
+    (
+      a,
+      b
+    ) => {
+      const byStage =
+        stageWeight[
+          a.stage
+        ] -
+        stageWeight[
+          b.stage
+        ];
+
+      if (
+        byStage !==
+        0
+      ) {
+        return byStage;
+      }
+
+      return b.sortDate.localeCompare(
+        a.sortDate
+      );
+    }
+  );
+
+  const actionCount =
+    processes.filter(
+      (
+        item
+      ) =>
+        item.stage ===
+        "action"
+    ).length;
+
+  const progressCount =
+    processes.filter(
+      (
+        item
+      ) =>
+        item.stage ===
+        "progress"
+    ).length;
+
+  const completedCount =
+    processes.filter(
+      (
+        item
+      ) =>
+        item.stage ===
+        "completed"
+    ).length;
+
+  return (
+    <UserDashboard
+      firstName={
+        firstName
+      }
+      today={
+        today
+      }
+      actionCount={
+        actionCount
+      }
+      progressCount={
+        progressCount
+      }
+      completedCount={
+        completedCount
+      }
+      processes={
+        processes
+      }
+      notifications={
+        notifications
+      }
+    />
+  );
+}
+
+// ============================================================
+// DASHBOARD FINANCEIRO
+// ============================================================
+
+function FinanceDashboard({
+  firstName,
+  today,
+  cardsCount,
+  siengeCount,
+  submittedCount,
+  reviewCount,
+  approvalCount,
+  inUseCount,
+  awaitingReturnCount,
+  conferenceCount,
+  conflictCount,
+  pendingLinkCount,
+  linkedCount,
+  purchaseDeliveryCount,
+  overdueCount,
+  warningCount,
+  onTimeCount,
+  onTimeRate,
+  unmatchedUsers,
+  priorities,
+  notifications,
+  canAdmin,
+}: {
+  firstName: string;
+  today: string;
+
+  cardsCount: number;
+  siengeCount: number;
+  submittedCount: number;
+  reviewCount: number;
+  approvalCount: number;
+  inUseCount: number;
+  awaitingReturnCount: number;
+  conferenceCount: number;
+  conflictCount: number;
+  pendingLinkCount: number;
+  linkedCount: number;
+  purchaseDeliveryCount: number;
+  overdueCount: number;
+  warningCount: number;
+  onTimeCount: number;
+  onTimeRate: number;
+  unmatchedUsers: number;
+
+  priorities:
+    PriorityItem[];
+
+  notifications:
+    NotificationRow[];
+
+  canAdmin: boolean;
+}) {
+  const activePriorityCount =
+    priorities.reduce(
+      (
+        total,
+        item
+      ) =>
+        total +
+        item.count,
+      0
+    );
 
   return (
     <main className="projeta-page">
@@ -758,31 +1780,18 @@ export default async function DashboardPage() {
           HEADER
       ====================================================== */}
 
-      <MotionReveal
-        distance={
-          10
-        }
-      >
+      <MotionReveal>
         <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <MotionStatus
-                pulse
-                className="flex"
-              >
-                <span className="status status-success status-xs" />
-              </MotionStatus>
-
-              <p className="projeta-section-label">
-                Operação em tempo real
-              </p>
-            </div>
+            <p className="projeta-section-label text-primary">
+              Operação financeira
+            </p>
 
             <h1 className="mt-3 text-[28px] font-[700] tracking-[-0.05em] text-base-content sm:text-[32px]">
               Olá, {firstName}.
             </h1>
 
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-[450] text-base-content/40">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/40">
               <span>
                 {today}
               </span>
@@ -790,14 +1799,620 @@ export default async function DashboardPage() {
               <span className="h-1 w-1 rounded-full bg-base-content/20" />
 
               <span>
-                Acompanhe o que precisa da sua atenção hoje.
+                Veja onde a operação precisa de atenção hoje.
               </span>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
-              href="/meus-pedidos"
+              href="/financeiro/sienge"
+              className="btn btn-ghost btn-sm h-10 rounded-xl border border-base-300 bg-base-100 px-4"
+            >
+              <FileSpreadsheet
+                size={
+                  15
+                }
+              />
+
+              Acompanhamento Sienge
+            </Link>
+
+            <Link
+              href="/financeiro/solicitacoes"
+              className="btn btn-primary btn-sm h-10 rounded-xl px-4"
+            >
+              <WalletCards
+                size={
+                  15
+                }
+              />
+
+              Central Financeira
+            </Link>
+          </div>
+        </header>
+      </MotionReveal>
+
+      {/* =====================================================
+          HERO FINANCEIRO
+      ====================================================== */}
+
+      <MotionReveal
+        delay={
+          0.04
+        }
+      >
+        <section className="projeta-dark-surface overflow-hidden">
+          <div className="p-6 sm:p-7">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles
+                    size={
+                      13
+                    }
+                    className="text-[#d66464]"
+                  />
+
+                  <p className="text-[8px] font-[750] uppercase tracking-[0.2em] text-white/35">
+                    Visão operacional
+                  </p>
+                </div>
+
+                <div className="mt-5 flex items-end gap-3">
+                  <AnimatedNumber
+                    value={
+                      activePriorityCount
+                    }
+                    className="text-[58px] font-[750] leading-none tracking-[-0.065em] text-white"
+                  />
+
+                  <div className="pb-1">
+                    <p className="text-[11px] font-[600] text-white/70">
+                      pontos de atenção
+                    </p>
+
+                    <p className="mt-1 text-[9px] text-white/30">
+                      ações operacionais monitoradas
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid w-full gap-3 sm:grid-cols-2 xl:max-w-[620px] xl:grid-cols-4">
+                <DarkMetric
+                  label="Novas"
+                  value={
+                    submittedCount
+                  }
+                />
+
+                <DarkMetric
+                  label="Devoluções"
+                  value={
+                    awaitingReturnCount
+                  }
+                />
+
+                <DarkMetric
+                  label="Conciliações"
+                  value={
+                    conflictCount
+                  }
+                />
+
+                <DarkMetric
+                  label="SLA vencido"
+                  value={
+                    overdueCount
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </MotionReveal>
+
+      {/* =====================================================
+          MÉTRICAS
+      ====================================================== */}
+
+      <MotionStagger
+        className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+      >
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              FileSpreadsheet
+            }
+            label="Novas solicitações"
+            value={
+              submittedCount
+            }
+          />
+        </MotionStaggerItem>
+
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              ShieldCheck
+            }
+            label="Aguardando aprovação"
+            value={
+              approvalCount
+            }
+          />
+        </MotionStaggerItem>
+
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              CreditCard
+            }
+            label="Cartões em uso"
+            value={
+              inUseCount
+            }
+          />
+        </MotionStaggerItem>
+
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              Truck
+            }
+            label="Aguardando devolução"
+            value={
+              awaitingReturnCount
+            }
+            tone={
+              awaitingReturnCount >
+              0
+                ? "warning"
+                : "default"
+            }
+          />
+        </MotionStaggerItem>
+
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              AlertTriangle
+            }
+            label="Revisar vínculos"
+            value={
+              conflictCount
+            }
+            tone={
+              conflictCount >
+              0
+                ? "error"
+                : "default"
+            }
+          />
+        </MotionStaggerItem>
+      </MotionStagger>
+
+      {/* =====================================================
+          PRIORIDADES + SAÚDE
+      ====================================================== */}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(330px,0.75fr)]">
+        <section className="projeta-panel overflow-hidden">
+          <div className="border-b border-base-300/70 px-5 py-5 sm:px-6">
+            <p className="projeta-section-label">
+              Prioridades
+            </p>
+
+            <h2 className="mt-2 text-[15px] font-[650]">
+              O que precisa ser resolvido
+            </h2>
+
+            <p className="mt-1 text-[10px] text-base-content/40">
+              Pontos da operação que podem exigir ação do Financeiro.
+            </p>
+          </div>
+
+          {priorities.every(
+            (
+              item
+            ) =>
+              item.count ===
+              0
+          ) ? (
+            <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
+              <CheckCircle2
+                size={
+                  26
+                }
+                className="text-success"
+              />
+
+              <p className="mt-4 text-[13px] font-[650]">
+                Operação em dia
+              </p>
+
+              <p className="mt-1 text-[10px] text-base-content/40">
+                Nenhuma prioridade operacional foi identificada.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-base-300/60">
+              {priorities
+                .filter(
+                  (
+                    item
+                  ) =>
+                    item.count >
+                    0
+                )
+                .map(
+                  (
+                    item
+                  ) => (
+                    <PriorityRow
+                      key={
+                        item.title
+                      }
+                      item={
+                        item
+                      }
+                    />
+                  )
+                )}
+            </div>
+          )}
+        </section>
+
+        <section className="projeta-panel p-5 sm:p-6">
+          <p className="projeta-section-label">
+            Saúde operacional
+          </p>
+
+          <div className="mt-2 flex items-end justify-between gap-5">
+            <div>
+              <h2 className="text-[15px] font-[650]">
+                Cumprimento de SLA
+              </h2>
+
+              <p className="mt-1 text-[10px] text-base-content/40">
+                Situação dos itens atualmente monitorados.
+              </p>
+            </div>
+
+            <p
+              className={[
+                "text-[31px] font-[750] tracking-[-0.05em]",
+                onTimeRate >=
+                80
+                  ? "text-success"
+                  : onTimeRate >=
+                      60
+                    ? "text-warning"
+                    : "text-error",
+              ].join(
+                " "
+              )}
+            >
+              {onTimeRate}%
+            </p>
+          </div>
+
+          <div className="mt-6 h-2 overflow-hidden rounded-full bg-base-200">
+            <div
+              className={[
+                "h-full rounded-full",
+                onTimeRate >=
+                80
+                  ? "bg-success"
+                  : onTimeRate >=
+                      60
+                    ? "bg-warning"
+                    : "bg-error",
+              ].join(
+                " "
+              )}
+              style={{
+                width:
+                  `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      onTimeRate
+                    )
+                  )}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-6 grid grid-cols-3 divide-x divide-base-300">
+            <HealthMetric
+              value={
+                onTimeCount
+              }
+              label="No prazo"
+              tone="success"
+            />
+
+            <HealthMetric
+              value={
+                warningCount
+              }
+              label="Atenção"
+              tone="warning"
+            />
+
+            <HealthMetric
+              value={
+                overdueCount
+              }
+              label="Atrasado"
+              tone="error"
+            />
+          </div>
+
+          <div className="mt-6 border-t border-base-300/70 pt-5">
+            <SmallOperationRow
+              label="Solicitações de cartão"
+              value={
+                cardsCount
+              }
+            />
+
+            <SmallOperationRow
+              label="Solicitações Sienge"
+              value={
+                siengeCount
+              }
+            />
+
+            <SmallOperationRow
+              label="Em compra / entrega"
+              value={
+                purchaseDeliveryCount
+              }
+            />
+
+            <SmallOperationRow
+              label="Vínculos confirmados"
+              value={
+                linkedCount
+              }
+            />
+
+            <SmallOperationRow
+              label="Aguardando vínculo"
+              value={
+                pendingLinkCount
+              }
+            />
+          </div>
+        </section>
+      </div>
+
+      {/* =====================================================
+          SITUAÇÃO DOS CARTÕES
+      ====================================================== */}
+
+      <section className="projeta-panel mt-6 overflow-hidden">
+        <div className="border-b border-base-300/70 px-5 py-5 sm:px-6">
+          <p className="projeta-section-label">
+            Cartões
+          </p>
+
+          <h2 className="mt-2 text-[15px] font-[650]">
+            Situação da operação
+          </h2>
+        </div>
+
+        <div className="grid gap-px bg-base-300/60 sm:grid-cols-2 xl:grid-cols-6">
+          <OperationBlock
+            label="Novas"
+            value={
+              submittedCount
+            }
+          />
+
+          <OperationBlock
+            label="Em análise"
+            value={
+              reviewCount
+            }
+          />
+
+          <OperationBlock
+            label="Aprovação"
+            value={
+              approvalCount
+            }
+          />
+
+          <OperationBlock
+            label="Em uso"
+            value={
+              inUseCount
+            }
+          />
+
+          <OperationBlock
+            label="Devolução"
+            value={
+              awaitingReturnCount
+            }
+          />
+
+          <OperationBlock
+            label="Conferência"
+            value={
+              conferenceCount
+            }
+          />
+        </div>
+      </section>
+
+      {/* =====================================================
+          ATIVIDADE + AÇÕES
+      ====================================================== */}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+        <ActivityPanel
+          notifications={
+            notifications
+          }
+        />
+
+        <section className="projeta-panel overflow-hidden">
+          <div className="border-b border-base-300/70 px-5 py-5">
+            <p className="projeta-section-label">
+              Acesso rápido
+            </p>
+
+            <h2 className="mt-2 text-[15px] font-[650]">
+              Operação Financeira
+            </h2>
+          </div>
+
+          <QuickLink
+            icon={
+              WalletCards
+            }
+            title="Central de Solicitações"
+            description="Cartões, Sienge e conciliação"
+            href="/financeiro/solicitacoes"
+            primary
+          />
+
+          <QuickLink
+            icon={
+              FileSpreadsheet
+            }
+            title="Acompanhamento Sienge"
+            description="Importação e gestão dos pedidos"
+            href="/financeiro/sienge"
+          />
+
+          <QuickLink
+            icon={
+              ListTodo
+            }
+            title="Central de Pendências"
+            description={`${overdueCount} item(ns) com SLA vencido`}
+            href="/pendencias"
+          />
+
+          {unmatchedUsers >
+            0 && (
+            <QuickLink
+              icon={
+                UserRoundX
+              }
+              title="Usuários Sienge sem vínculo"
+              description={`${unmatchedUsers} identificador(es) pendente(s)`}
+              href="/financeiro/sienge?tab=usuarios"
+            />
+          )}
+
+          {canAdmin && (
+            <QuickLink
+              icon={
+                UsersRound
+              }
+              title="Usuários e acessos"
+              description="Perfis, permissões e segurança"
+              href="/administracao/usuarios"
+            />
+          )}
+        </section>
+      </div>
+
+      <DashboardFooter />
+    </main>
+  );
+}
+
+// ============================================================
+// DASHBOARD SOLICITANTE
+// ============================================================
+
+function UserDashboard({
+  firstName,
+  today,
+  actionCount,
+  progressCount,
+  completedCount,
+  processes,
+  notifications,
+}: {
+  firstName: string;
+
+  today: string;
+
+  actionCount: number;
+
+  progressCount: number;
+
+  completedCount: number;
+
+  processes:
+    UserProcess[];
+
+  notifications:
+    NotificationRow[];
+}) {
+  const actionItems =
+    processes
+      .filter(
+        (
+          item
+        ) =>
+          item.stage ===
+          "action"
+      )
+      .slice(
+        0,
+        5
+      );
+
+  const recentProcesses =
+    processes.slice(
+      0,
+      6
+    );
+
+  return (
+    <main className="projeta-page">
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
+
+      <MotionReveal>
+        <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="projeta-section-label text-primary">
+              Minha operação
+            </p>
+
+            <h1 className="mt-3 text-[28px] font-[700] tracking-[-0.05em] text-base-content sm:text-[32px]">
+              Olá, {firstName}.
+            </h1>
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/40">
+              <span>
+                {today}
+              </span>
+
+              <span className="h-1 w-1 rounded-full bg-base-content/20" />
+
+              <span>
+                Veja suas solicitações e o que precisa da sua ação.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/solicitacoes"
               className="btn btn-ghost btn-sm h-10 rounded-xl border border-base-300 bg-base-100 px-4"
             >
               <PackageSearch
@@ -806,7 +2421,7 @@ export default async function DashboardPage() {
                 }
               />
 
-              Meus pedidos
+              Minhas solicitações
             </Link>
 
             <Link
@@ -826,1801 +2441,711 @@ export default async function DashboardPage() {
       </MotionReveal>
 
       {/* =====================================================
-          HERO
-      ====================================================== */}
-
-      <MotionStagger
-        className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.65fr)]"
-        stagger={
-          0.09
-        }
-      >
-        {/* ===================================================
-            COCKPIT
-        ==================================================== */}
-
-        <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
-            }
-            className="h-full"
-          >
-            <section className="projeta-dark-surface h-full min-h-[340px]">
-              <div className="relative z-10 flex h-full flex-col p-6 sm:p-7">
-                <div className="flex items-start justify-between gap-5">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <MotionScaleIn
-                        delay={
-                          0.12
-                        }
-                      >
-                        <Sparkles
-                          size={
-                            13
-                          }
-                          className="text-[#d66464]"
-                        />
-                      </MotionScaleIn>
-
-                      <p className="text-[8px] font-[750] uppercase tracking-[0.2em] text-white/35">
-                        Pulso da operação
-                      </p>
-                    </div>
-
-                    <div className="mt-5 flex items-end gap-3">
-                      <AnimatedNumber
-                        value={
-                          totalRequests
-                        }
-                        duration={
-                          0.9
-                        }
-                        delay={
-                          0.12
-                        }
-                        className="text-[58px] font-[750] leading-none tracking-[-0.065em] text-white"
-                      />
-
-                      <div className="pb-1.5">
-                        <p className="text-[11px] font-[550] text-white/70">
-                          solicitações
-                        </p>
-
-                        <p className="mt-0.5 text-[9px] font-[450] text-white/30">
-                          acompanhadas pelo sistema
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <MotionScaleIn
-                    delay={
-                      0.18
-                    }
-                  >
-                    <div className="projeta-float flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-white/[0.08] bg-white/[0.055] text-white/55 backdrop-blur-sm">
-                      <ShoppingCart
-                        size={
-                          20
-                        }
-                      />
-                    </div>
-                  </MotionScaleIn>
-                </div>
-
-                {/* =================================================
-                    MÉTRICAS CLICÁVEIS
-                ================================================== */}
-
-                <MotionStagger
-                  className="mt-8 grid grid-cols-3 divide-x divide-white/[0.08] border-y border-white/[0.07] py-3"
-                  delay={
-                    0.18
-                  }
-                  stagger={
-                    0.07
-                  }
-                >
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <CockpitMetric
-                      value={
-                        inProgress
-                      }
-                      label="Em andamento"
-                      hint="processos ativos"
-                      delay={
-                        0.2
-                      }
-                      href={
-                        operationHref
-                      }
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <CockpitMetric
-                      value={
-                        delivered
-                      }
-                      label="Entregues"
-                      hint="processos concluídos"
-                      delay={
-                        0.27
-                      }
-                      href={
-                        operationHref
-                      }
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <CockpitMetric
-                      value={
-                        completionRate
-                      }
-                      suffix="%"
-                      label="Conclusão"
-                      hint="taxa geral"
-                      delay={
-                        0.34
-                      }
-                      href={
-                        operationHref
-                      }
-                    />
-                  </MotionStaggerItem>
-                </MotionStagger>
-
-                {/* =================================================
-                    FOOTER
-                ================================================== */}
-
-                <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
-                  <MotionStagger
-                    className="flex flex-wrap items-center gap-4"
-                    delay={
-                      0.28
-                    }
-                    stagger={
-                      0.07
-                    }
-                  >
-                    <MotionStaggerItem
-                      scale={
-                        false
-                      }
-                    >
-                      <OperationSignal
-                        color="bg-emerald-400"
-                        value={
-                          onTimeItems.length
-                        }
-                        label="no prazo"
-                        delay={
-                          0.3
-                        }
-                      />
-                    </MotionStaggerItem>
-
-                    <MotionStaggerItem
-                      scale={
-                        false
-                      }
-                    >
-                      <OperationSignal
-                        color="bg-amber-400"
-                        value={
-                          warningItems.length
-                        }
-                        label="em atenção"
-                        delay={
-                          0.36
-                        }
-                      />
-                    </MotionStaggerItem>
-
-                    <MotionStaggerItem
-                      scale={
-                        false
-                      }
-                    >
-                      <OperationSignal
-                        color="bg-red-400"
-                        value={
-                          overdueItems.length
-                        }
-                        label="atrasados"
-                        delay={
-                          0.42
-                        }
-                      />
-                    </MotionStaggerItem>
-                  </MotionStagger>
-
-                  <Link
-                    href={
-                      operationHref
-                    }
-                    className="group flex items-center gap-2 text-[10px] font-[650] text-white/45 transition hover:text-white"
-                  >
-                    Abrir operação
-
-                    <ArrowUpRight
-                      size={
-                        13
-                      }
-                      className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                    />
-                  </Link>
-                </div>
-              </div>
-            </section>
-          </MotionSurface>
-        </MotionStaggerItem>
-
-        {/* ===================================================
-            SLA
-        ==================================================== */}
-
-        <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
-            }
-            className="h-full"
-          >
-            <section className="projeta-panel flex h-full min-h-[340px] flex-col">
-              <div className="relative z-10 flex flex-1 flex-col p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="projeta-section-label">
-                      Saúde operacional
-                    </p>
-
-                    <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
-                      SLA da operação
-                    </h2>
-                  </div>
-
-                  <TrendingUp
-                    size={
-                      18
-                    }
-                    className="text-base-content/20"
-                  />
-                </div>
-
-                <div className="flex flex-1 items-center justify-center py-5">
-                  <MotionScaleIn>
-                    <AnimatedRadialProgress
-                      value={
-                        onTimeRate
-                      }
-                      duration={
-                        1.05
-                      }
-                      delay={
-                        0.15
-                      }
-                      size="8.8rem"
-                      thickness="0.55rem"
-                      className={
-                        getSlaTextColor(
-                          onTimeRate
-                        )
-                      }
-                      valueClassName="text-[30px] font-[750] leading-none tracking-[-0.055em]"
-                      label="dentro do prazo"
-                      labelClassName="mt-1 text-[8px] font-[750] uppercase tracking-[0.12em] text-base-content/30"
-                      ariaLabel="Percentual de itens dentro do SLA"
-                    />
-                  </MotionScaleIn>
-                </div>
-
-                <MotionStagger
-                  className="grid grid-cols-3 divide-x divide-base-300 border-t border-base-300 pt-4"
-                  stagger={
-                    0.07
-                  }
-                >
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <MiniSla
-                      value={
-                        onTimeItems.length
-                      }
-                      label="No prazo"
-                      dot="bg-success"
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <MiniSla
-                      value={
-                        warningItems.length
-                      }
-                      label="Atenção"
-                      dot="bg-warning"
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem
-                    scale={
-                      false
-                    }
-                  >
-                    <MiniSla
-                      value={
-                        overdueItems.length
-                      }
-                      label="Atrasado"
-                      dot="bg-error"
-                    />
-                  </MotionStaggerItem>
-                </MotionStagger>
-              </div>
-            </section>
-          </MotionSurface>
-        </MotionStaggerItem>
-      </MotionStagger>
-
-      {/* =====================================================
-          CENTRAL DE ATENÇÃO
+          HERO DO USUÁRIO
       ====================================================== */}
 
       <MotionReveal
         delay={
-          0.06
+          0.04
         }
       >
-        <section className="mt-4">
-          <Link
-            href="/pendencias"
-            className={[
-              "group block overflow-hidden rounded-[18px] border transition-all",
-              pendingSummary.status ===
-              "critical"
-                ? "border-red-200/80 bg-red-50/65 hover:border-red-300/80"
-                : pendingSummary.status ===
-                    "attention"
-                  ? "border-amber-200/80 bg-amber-50/70 hover:border-amber-300/80"
-                  : "border-emerald-200/70 bg-emerald-50/55 hover:border-emerald-300/80",
-            ].join(
-              " "
-            )}
-          >
-            <div className="flex flex-col gap-4 px-5 py-4 xl:flex-row xl:items-center">
-              <MotionStatus
-                pulse={
-                  criticalCount >
+        <section
+          className={[
+            "overflow-hidden rounded-[22px] border",
+            actionCount >
+            0
+              ? "border-amber-200 bg-amber-50/70"
+              : "border-emerald-200 bg-emerald-50/60",
+          ].join(
+            " "
+          )}
+        >
+          <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
+            <div
+              className={[
+                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm",
+                actionCount >
+                0
+                  ? "text-amber-600"
+                  : "text-emerald-600",
+              ].join(
+                " "
+              )}
+            >
+              {actionCount >
+              0 ? (
+                <Sparkles
+                  size={
+                    20
+                  }
+                />
+              ) : (
+                <CheckCircle2
+                  size={
+                    20
+                  }
+                />
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p
+                className={[
+                  "text-[15px] font-[700]",
+                  actionCount >
                   0
-                }
+                    ? "text-amber-950"
+                    : "text-emerald-950",
+                ].join(
+                  " "
+                )}
               >
-                <div
-                  className={[
-                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                    criticalCount >
-                    0
-                      ? "bg-error/10 text-error"
-                      : attentionCount >
-                          0
-                        ? "bg-warning/10 text-warning"
-                        : "bg-success/10 text-success",
-                  ].join(
-                    " "
-                  )}
-                >
-                  {pendingCount >
-                  0 ? (
-                    <AlertTriangle
-                      size={
-                        18
-                      }
-                    />
-                  ) : (
-                    <CheckCircle2
-                      size={
-                        18
-                      }
-                    />
-                  )}
-                </div>
-              </MotionStatus>
+                {actionCount >
+                0
+                  ? `Você tem ${actionCount} ${
+                      actionCount ===
+                      1
+                        ? "solicitação que precisa"
+                        : "solicitações que precisam"
+                    } da sua atenção`
+                  : "Você não possui nenhuma ação pendente"}
+              </p>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[12px] font-[700] text-base-content/75">
-                    {pendingCount >
-                    0 ? (
-                      <>
-                        <AnimatedNumber
-                          value={
-                            pendingCount
-                          }
-                          className="font-[750]"
-                        />{" "}
-                        pendência
-                        {pendingCount ===
-                        1
-                          ? ""
-                          : "s"}{" "}
-                        operacional
-                        {pendingCount ===
-                        1
-                          ? ""
-                          : "is"}
-                      </>
-                    ) : (
-                      "Operação sem pendências"
-                    )}
-                  </p>
-
-                  {criticalCount >
-                    0 && (
-                    <span className="badge badge-error badge-sm">
-                      {criticalCount} críticas
-                    </span>
-                  )}
-
-                  {attentionCount >
-                    0 && (
-                    <span className="badge badge-warning badge-sm">
-                      {attentionCount} em atenção
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-1 text-[10px] font-[450] text-base-content/40">
-                  {pendingCount >
+              <p
+                className={[
+                  "mt-1 text-[11px] leading-5",
+                  actionCount >
                   0
-                    ? "Resumo consolidado da Central de Pendências."
-                    : "Os monitores atuais não identificaram pontos pendentes."}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2 xl:justify-end">
-                {pendingCategories.sla >
-                  0 && (
-                  <SummaryChip
-                    label="SLA"
-                    value={
-                      pendingCategories.sla
-                    }
-                    variant="error"
-                  />
+                    ? "text-amber-800"
+                    : "text-emerald-800",
+                ].join(
+                  " "
                 )}
+              >
+                {actionCount >
+                0
+                  ? "As ações mais importantes aparecem logo abaixo para você resolver sem procurar em outros módulos."
+                  : "Suas solicitações continuam sendo acompanhadas normalmente pelo sistema."}
+              </p>
+            </div>
 
-                {pendingCategories.deliveries >
-                  0 && (
-                  <SummaryChip
-                    label="Entregas"
-                    value={
-                      pendingCategories.deliveries
-                    }
-                    variant="error"
-                  />
-                )}
-
-                {pendingCategories.warning >
-                  0 && (
-                  <SummaryChip
-                    label="Atenção SLA"
-                    value={
-                      pendingCategories.warning
-                    }
-                    variant="warning"
-                  />
-                )}
-
-                {pendingCategories.unmatched >
-                  0 && (
-                  <SummaryChip
-                    label="Vínculos"
-                    value={
-                      pendingCategories.unmatched
-                    }
-                    variant="warning"
-                  />
-                )}
-
-                {pendingCategories.alerts >
-                  0 && (
-                  <SummaryChip
-                    label="Alertas"
-                    value={
-                      pendingCategories.alerts
-                    }
-                    variant={
-                      pendingCategories.alertErrors >
-                      0
-                        ? "error"
-                        : "warning"
-                    }
-                  />
-                )}
-              </div>
+            <Link
+              href={
+                actionCount >
+                0
+                  ? "/solicitacoes?filter=action"
+                  : "/solicitacoes"
+              }
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-[11px] font-[650] text-white transition hover:bg-slate-800"
+            >
+              {actionCount >
+              0
+                ? "Ver minhas ações"
+                : "Ver solicitações"}
 
               <ArrowRight
                 size={
-                  15
+                  14
                 }
-                className="hidden shrink-0 text-base-content/20 transition group-hover:translate-x-1 group-hover:text-primary xl:block"
               />
-            </div>
-          </Link>
-        </section>
-      </MotionReveal>
-
-      {/* =====================================================
-          FLUXO
-      ====================================================== */}
-
-      <MotionReveal
-        delay={
-          0.08
-        }
-      >
-        <section className="projeta-panel mt-6">
-          <div className="relative z-10">
-            <div className="flex flex-col gap-3 border-b border-base-300/70 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Activity
-                    size={
-                      13
-                    }
-                    className="text-primary"
-                  />
-
-                  <p className="projeta-section-label">
-                    Jornada de compra
-                  </p>
-                </div>
-
-                <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
-                  Fluxo das solicitações
-                </h2>
-
-                <p className="mt-1 text-[10px] font-[450] text-base-content/40">
-                  Clique em uma etapa para abrir a operação.
-                </p>
-              </div>
-
-              <Link
-                href={
-                  operationHref
-                }
-                className="btn btn-ghost btn-sm gap-2 self-start text-[10px] text-base-content/45 sm:self-auto"
-              >
-                Abrir detalhes
-
-                <ArrowUpRight
-                  size={
-                    13
-                  }
-                />
-              </Link>
-            </div>
-
-            <div className="overflow-x-auto px-5 py-7 sm:px-6">
-              <div className="min-w-[820px]">
-                <MotionStagger
-                  className="grid grid-cols-7"
-                  delay={
-                    0.1
-                  }
-                  stagger={
-                    0.08
-                  }
-                >
-                  {flowData.map(
-                    (
-                      item,
-                      index
-                    ) => (
-                      <MotionStaggerItem
-                        key={
-                          item.key
-                        }
-                      >
-                        <FlowStage
-                          label={
-                            item.shortLabel
-                          }
-                          fullLabel={
-                            item.label
-                          }
-                          count={
-                            item.count
-                          }
-                          statusKey={
-                            item.key
-                          }
-                          first={
-                            index ===
-                            0
-                          }
-                          last={
-                            index ===
-                            flowData.length -
-                            1
-                          }
-                          delay={
-                            index *
-                            0.07
-                          }
-                          href={
-                            operationHref
-                          }
-                        />
-                      </MotionStaggerItem>
-                    )
-                  )}
-                </MotionStagger>
-              </div>
-            </div>
+            </Link>
           </div>
         </section>
       </MotionReveal>
 
       {/* =====================================================
-          PENDÊNCIAS + ATIVIDADE
+          RESUMO
       ====================================================== */}
 
       <MotionStagger
-        className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
-        stagger={
-          0.09
-        }
+        className="mt-5 grid gap-4 sm:grid-cols-3"
       >
-        {/* ===================================================
-            CENTRAL DE PENDÊNCIAS
-        ==================================================== */}
-
         <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
+          <MetricCard
+            icon={
+              AlertTriangle
             }
-            className="h-full"
-          >
-            <section className="projeta-panel h-full">
-              <div className="relative z-10">
-                <div className="border-b border-base-300/70 px-5 py-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="projeta-section-label">
-                        Central de atenção
-                      </p>
-
-                      <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
-                        Composição das pendências
-                      </h2>
-                    </div>
-
-                    <div className="indicator">
-                      {pendingCount >
-                        0 && (
-                        <span
-                          className={[
-                            "indicator-item badge badge-xs",
-                            criticalCount >
-                            0
-                              ? "badge-error"
-                              : "badge-warning",
-                          ].join(
-                            " "
-                          )}
-                        >
-                          {pendingCount}
-                        </span>
-                      )}
-
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-base-200 text-base-content/30">
-                        <ListTodo
-                          size={
-                            16
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {pendingCount >
-                    0 && (
-                    <div className="mt-4 grid grid-cols-3 divide-x divide-base-300 rounded-xl border border-base-300/70 bg-base-200/25 py-3">
-                      <PendingMiniMetric
-                        label="Total"
-                        value={
-                          pendingCount
-                        }
-                        tone="neutral"
-                      />
-
-                      <PendingMiniMetric
-                        label="Críticas"
-                        value={
-                          criticalCount
-                        }
-                        tone="error"
-                      />
-
-                      <PendingMiniMetric
-                        label="Atenção"
-                        value={
-                          attentionCount
-                        }
-                        tone="warning"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {pendingCount ===
-                0 ? (
-                  <div className="projeta-empty min-h-[340px]">
-                    <MotionStatus>
-                      <div className="projeta-empty-icon bg-success/5 text-success">
-                        <Check
-                          size={
-                            21
-                          }
-                        />
-                      </div>
-                    </MotionStatus>
-
-                    <p className="mt-4 text-[13px] font-[650]">
-                      Operação em dia
-                    </p>
-
-                    <p className="mt-1 max-w-[260px] text-[10px] leading-5 text-base-content/40">
-                      Nenhuma pendência foi identificada.
-                    </p>
-                  </div>
-                ) : (
-                  <MotionList
-                    className="p-2"
-                    stagger={
-                      0.055
-                    }
-                  >
-                    <MotionListItem>
-                      <AttentionItem
-                        icon={
-                          Clock3
-                        }
-                        title="SLA vencido"
-                        description="Solicitações que ultrapassaram o prazo."
-                        value={
-                          pendingCategories.sla
-                        }
-                        href={
-                          operationHref
-                        }
-                        variant="error"
-                      />
-                    </MotionListItem>
-
-                    <MotionListItem>
-                      <AttentionItem
-                        icon={
-                          Truck
-                        }
-                        title="Entregas vencidas"
-                        description="Previsão de entrega ou retirada ultrapassada."
-                        value={
-                          pendingCategories.deliveries
-                        }
-                        href={
-                          operationHref
-                        }
-                        variant="error"
-                      />
-                    </MotionListItem>
-
-                    <MotionListItem>
-                      <AttentionItem
-                        icon={
-                          AlertTriangle
-                        }
-                        title="SLA em atenção"
-                        description="Solicitações próximas do limite operacional."
-                        value={
-                          pendingCategories.warning
-                        }
-                        href={
-                          operationHref
-                        }
-                        variant="warning"
-                      />
-                    </MotionListItem>
-
-                    {canFinance && (
-                      <MotionListItem>
-                        <AttentionItem
-                          icon={
-                            UserRoundX
-                          }
-                          title="Usuários sem vínculo"
-                          description="Identificadores Sienge ainda não associados."
-                          value={
-                            pendingCategories.unmatched
-                          }
-                          href="/financeiro/sienge?tab=usuarios"
-                          variant="warning"
-                        />
-                      </MotionListItem>
-                    )}
-
-                    <MotionListItem>
-                      <AttentionItem
-                        icon={
-                          Bell
-                        }
-                        title="Alertas não lidos"
-                        description={
-                          pendingCategories.alertErrors >
-                          0
-                            ? `${pendingCategories.alertErrors} alerta(s) crítico(s) entre os não lidos.`
-                            : "Avisos operacionais aguardando análise."
-                        }
-                        value={
-                          pendingCategories.alerts
-                        }
-                        href="/notificacoes?filtro=nao-lidas"
-                        variant={
-                          pendingCategories.alertErrors >
-                          0
-                            ? "error"
-                            : "warning"
-                        }
-                      />
-                    </MotionListItem>
-
-                    <MotionListItem>
-                      <div className="mt-1 border-t border-base-300/70 p-2 pt-3">
-                        <Link
-                          href="/pendencias"
-                          className="group flex h-10 items-center justify-center gap-2 rounded-xl text-[10px] font-[650] text-base-content/45 transition hover:bg-base-200 hover:text-base-content"
-                        >
-                          Abrir Central de Pendências
-
-                          <ChevronRight
-                            size={
-                              13
-                            }
-                            className="transition group-hover:translate-x-0.5"
-                          />
-                        </Link>
-                      </div>
-                    </MotionListItem>
-                  </MotionList>
-                )}
-              </div>
-            </section>
-          </MotionSurface>
+            label="Precisa de mim"
+            value={
+              actionCount
+            }
+            href="/solicitacoes?filter=action"
+            tone={
+              actionCount >
+              0
+                ? "warning"
+                : "default"
+            }
+          />
         </MotionStaggerItem>
 
-        {/* ===================================================
-            ATIVIDADE
-        ==================================================== */}
+        <MotionStaggerItem>
+          <MetricCard
+            icon={
+              Clock3
+            }
+            label="Em andamento"
+            value={
+              progressCount
+            }
+            href="/solicitacoes?filter=progress"
+          />
+        </MotionStaggerItem>
 
         <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
+          <MetricCard
+            icon={
+              CheckCircle2
             }
-            className="h-full"
-          >
-            <section className="projeta-panel h-full">
-              <div className="relative z-10">
-                <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5 sm:px-6">
-                  <div>
-                    <p className="projeta-section-label">
-                      Timeline
-                    </p>
-
-                    <h2 className="mt-2 text-[15px] font-[650] tracking-[-0.025em]">
-                      Atividade recente
-                    </h2>
-                  </div>
-
-                  <Link
-                    href="/notificacoes"
-                    className="group flex items-center gap-1.5 text-[9px] font-[650] text-base-content/35 transition hover:text-primary"
-                  >
-                    Histórico
-
-                    <ArrowRight
-                      size={
-                        12
-                      }
-                    />
-                  </Link>
-                </div>
-
-                {recentActivity.length ===
-                0 ? (
-                  <div className="projeta-empty min-h-[340px]">
-                    <div className="projeta-empty-icon">
-                      <Activity
-                        size={
-                          21
-                        }
-                      />
-                    </div>
-
-                    <p className="mt-4 text-[13px] font-[650]">
-                      Sem atividade recente
-                    </p>
-                  </div>
-                ) : (
-                  <MotionList
-                    className="px-5 py-2 sm:px-6"
-                    stagger={
-                      0.065
-                    }
-                  >
-                    {recentActivity.map(
-                      (
-                        activity,
-                        index
-                      ) => (
-                        <MotionListItem
-                          key={
-                            activity.id
-                          }
-                        >
-                          <TimelineActivity
-                            activity={
-                              activity
-                            }
-                            last={
-                              index ===
-                              recentActivity.length -
-                              1
-                            }
-                          />
-                        </MotionListItem>
-                      )
-                    )}
-                  </MotionList>
-                )}
-              </div>
-            </section>
-          </MotionSurface>
+            label="Concluídas"
+            value={
+              completedCount
+            }
+            href="/solicitacoes?filter=completed"
+            tone="success"
+          />
         </MotionStaggerItem>
       </MotionStagger>
 
       {/* =====================================================
-          PERFORMANCE + AÇÕES
+          AÇÕES DO USUÁRIO
       ====================================================== */}
 
-      <MotionStagger
-        className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]"
-        stagger={
-          0.09
-        }
-      >
-        {/* ===================================================
-            PERFORMANCE
-        ==================================================== */}
+      <section className="projeta-panel mt-6 overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-base-300/70 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <p className="projeta-section-label">
+              Próximas ações
+            </p>
 
-        <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
-            }
-            className="h-full"
-          >
-            <section className="projeta-panel h-full">
-              <div className="relative z-10 p-5 sm:p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="projeta-section-label">
-                      Performance
-                    </p>
+            <h2 className="mt-2 text-[15px] font-[650]">
+              Precisa de você
+            </h2>
 
-                    <h2 className="mt-2 text-[15px] font-[650]">
-                      Distribuição do SLA
-                    </h2>
+            <p className="mt-1 text-[10px] text-base-content/40">
+              Somente atividades que dependem de uma ação sua.
+            </p>
+          </div>
 
-                    <p className="mt-1 text-[10px] text-base-content/40">
-                      Composição dos itens monitorados atualmente.
-                    </p>
-                  </div>
-
-                  <MotionStatus>
-                    <span
-                      className={[
-                        "badge badge-sm",
-                        onTimeRate >=
-                        80
-                          ? "badge-success"
-                          : onTimeRate >=
-                              60
-                            ? "badge-warning"
-                            : "badge-error",
-                      ].join(
-                        " "
-                      )}
-                    >
-                      {getSlaLabel(
-                        onTimeRate
-                      )}
-                    </span>
-                  </MotionStatus>
-                </div>
-
-                <div className="mt-7 rounded-[16px] border border-base-300/70 bg-base-200/20 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-[9px] font-[650] text-base-content/45">
-                      Índice de cumprimento
-                    </p>
-
-                    <AnimatedNumber
-                      value={
-                        onTimeRate
-                      }
-                      suffix="%"
-                      className={[
-                        "text-[20px] font-[750]",
-                        getSlaTextColor(
-                          onTimeRate
-                        ),
-                      ].join(
-                        " "
-                      )}
-                    />
-                  </div>
-
-                  <AnimatedProgress
-                    value={
-                      onTimeRate
-                    }
-                    duration={
-                      0.95
-                    }
-                    height={
-                      8
-                    }
-                    barClassName={
-                      getSlaBarColor(
-                        onTimeRate
-                      )
-                    }
-                    showGlow
-                  />
-                </div>
-
-                <MotionStagger
-                  className="mt-5 grid gap-3 sm:grid-cols-3"
-                  stagger={
-                    0.08
-                  }
-                >
-                  <MotionStaggerItem>
-                    <PerformanceItem
-                      label="Dentro do prazo"
-                      value={
-                        onTimeItems.length
-                      }
-                      percentage={
-                        onTimeRate
-                      }
-                      dot="bg-success"
-                      barClassName="bg-success"
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem>
-                    <PerformanceItem
-                      label="Em atenção"
-                      value={
-                        warningItems.length
-                      }
-                      percentage={
-                        warningRate
-                      }
-                      dot="bg-warning"
-                      barClassName="bg-warning"
-                    />
-                  </MotionStaggerItem>
-
-                  <MotionStaggerItem>
-                    <PerformanceItem
-                      label="Atrasados"
-                      value={
-                        overdueItems.length
-                      }
-                      percentage={
-                        overdueRate
-                      }
-                      dot="bg-error"
-                      barClassName="bg-error"
-                    />
-                  </MotionStaggerItem>
-                </MotionStagger>
-              </div>
-            </section>
-          </MotionSurface>
-        </MotionStaggerItem>
-
-        {/* ===================================================
-            QUICK ACTIONS
-        ==================================================== */}
-
-        <MotionStaggerItem>
-          <MotionSurface
-            interactive={
-              false
-            }
-            className="h-full"
-          >
-            <section className="h-full overflow-hidden rounded-[22px] border border-base-300 bg-base-100">
-              <div className="border-b border-base-300/70 px-5 py-5">
-                <div className="flex items-center gap-2">
-                  <Sparkles
-                    size={
-                      13
-                    }
-                    className="text-primary"
-                  />
-
-                  <p className="projeta-section-label">
-                    Comandos
-                  </p>
-                </div>
-
-                <h2 className="mt-2 text-[15px] font-[650]">
-                  Ações rápidas
-                </h2>
-              </div>
-
-              <MotionList
-                className="grid sm:grid-cols-2 xl:grid-cols-1"
-              >
-                <MotionListItem>
-                  <CommandAction
-                    icon={
-                      Send
-                    }
-                    title="Solicitar cartão"
-                    description="Iniciar nova solicitação"
-                    href="/solicitacoes/nova"
-                    primary
-                  />
-                </MotionListItem>
-
-                <MotionListItem>
-                  <CommandAction
-                    icon={
-                      PackageSearch
-                    }
-                    title="Consultar pedidos"
-                    description="Acompanhar solicitações"
-                    href="/meus-pedidos"
-                  />
-                </MotionListItem>
-
-                <MotionListItem>
-                  <CommandAction
-                    icon={
-                      RotateCcw
-                    }
-                    title="Registrar devolução"
-                    description="Iniciar prestação de cartão"
-                    href="/devolucoes"
-                  />
-                </MotionListItem>
-
-                <MotionListItem>
-                  <CommandAction
-                    icon={
-                      ListTodo
-                    }
-                    title="Central de Pendências"
-                    description={`${pendingCount} total · ${criticalCount} críticas`}
-                    href="/pendencias"
-                  />
-                </MotionListItem>
-
-                {canFinance && (
-                  <MotionListItem>
-                    <CommandAction
-                      icon={
-                        FileSpreadsheet
-                      }
-                      title="Acompanhamento Sienge"
-                      description="Gestão completa"
-                      href="/financeiro/sienge"
-                    />
-                  </MotionListItem>
-                )}
-
-                {canFinance && (
-                  <MotionListItem>
-                    <CommandAction
-                      icon={
-                        WalletCards
-                      }
-                      title="Financeiro"
-                      description="Gerenciar solicitações"
-                      href="/financeiro/solicitacoes"
-                    />
-                  </MotionListItem>
-                )}
-
-                {canAdmin && (
-                  <MotionListItem>
-                    <CommandAction
-                      icon={
-                        UsersRound
-                      }
-                      title="Usuários e acessos"
-                      description="Permissões e segurança"
-                      href="/administracao/usuarios"
-                    />
-                  </MotionListItem>
-                )}
-              </MotionList>
-            </section>
-          </MotionSurface>
-        </MotionStaggerItem>
-      </MotionStagger>
-
-      {/* =====================================================
-          FOOTER
-      ====================================================== */}
-
-      <footer className="mt-7 flex flex-col gap-2 border-t border-base-300/60 py-5 text-[8px] font-[550] text-base-content/25 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <span className="status status-success status-xs" />
-
-          Dados sincronizados com a operação
+          {actionCount >
+            0 && (
+            <Link
+              href="/solicitacoes?filter=action"
+              className="text-[10px] font-[650] text-primary hover:underline"
+            >
+              Ver todas
+            </Link>
+          )}
         </div>
 
-        <span className="uppercase tracking-[0.14em]">
-          Projeta Compras OS
-        </span>
-      </footer>
+        {actionItems.length ===
+        0 ? (
+          <div className="flex min-h-[230px] flex-col items-center justify-center p-8 text-center">
+            <CheckCircle2
+              size={
+                25
+              }
+              className="text-success"
+            />
+
+            <p className="mt-4 text-[13px] font-[650]">
+              Tudo certo por aqui
+            </p>
+
+            <p className="mt-1 max-w-[330px] text-[10px] leading-5 text-base-content/40">
+              Nenhuma solicitação depende de uma ação sua neste momento.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-base-300/60">
+            {actionItems.map(
+              (
+                item
+              ) => (
+                <UserProcessRow
+                  key={
+                    item.key
+                  }
+                  item={
+                    item
+                  }
+                  prominent
+                />
+              )
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* =====================================================
+          SOLICITAÇÕES RECENTES + ATIVIDADE
+      ====================================================== */}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <section className="projeta-panel overflow-hidden">
+          <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5 sm:px-6">
+            <div>
+              <p className="projeta-section-label">
+                Acompanhamento
+              </p>
+
+              <h2 className="mt-2 text-[15px] font-[650]">
+                Minhas solicitações recentes
+              </h2>
+            </div>
+
+            <Link
+              href="/solicitacoes"
+              className="text-[10px] font-[650] text-primary hover:underline"
+            >
+              Ver todas
+            </Link>
+          </div>
+
+          {recentProcesses.length ===
+          0 ? (
+            <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
+              <PackageSearch
+                size={
+                  26
+                }
+                className="text-base-content/20"
+              />
+
+              <p className="mt-4 text-[13px] font-[650]">
+                Nenhuma solicitação ainda
+              </p>
+
+              <p className="mt-1 text-[10px] text-base-content/40">
+                Suas solicitações aparecerão aqui.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-base-300/60">
+              {recentProcesses.map(
+                (
+                  item
+                ) => (
+                  <UserProcessRow
+                    key={
+                      item.key
+                    }
+                    item={
+                      item
+                    }
+                  />
+                )
+              )}
+            </div>
+          )}
+        </section>
+
+        <ActivityPanel
+          notifications={
+            notifications
+          }
+          personal
+        />
+      </div>
+
+      {/* =====================================================
+          AÇÕES RÁPIDAS
+      ====================================================== */}
+
+      <section className="mt-6">
+        <div className="mb-3">
+          <p className="projeta-section-label">
+            Atalhos
+          </p>
+
+          <h2 className="mt-2 text-[15px] font-[650]">
+            O que você deseja fazer?
+          </h2>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <ShortcutCard
+            icon={
+              Plus
+            }
+            title="Nova solicitação de cartão"
+            description="Inicie uma nova solicitação para utilização de cartão."
+            href="/solicitacoes/nova"
+            primary
+          />
+
+          <ShortcutCard
+            icon={
+              PackageSearch
+            }
+            title="Minhas solicitações"
+            description="Acompanhe cartões, compras, devoluções e recebimentos em uma única página."
+            href="/solicitacoes"
+          />
+        </div>
+      </section>
+
+      <DashboardFooter />
     </main>
   );
 }
 
 // ============================================================
-// COCKPIT METRIC
+// USER PROCESS ROW
 // ============================================================
 
-function CockpitMetric({
-  value,
-  suffix = "",
-  label,
-  hint,
-  delay = 0,
-  href,
+function UserProcessRow({
+  item,
+  prominent = false,
 }: {
-  value: number;
+  item:
+    UserProcess;
 
-  suffix?: string;
-
-  label: string;
-
-  hint: string;
-
-  delay?: number;
-
-  href: string;
+  prominent?:
+    boolean;
 }) {
-  return (
-    <Link
-      href={
-        href
-      }
-      className="group block rounded-xl px-4 py-2 first:ml-0"
-    >
-      <div className="flex items-start justify-between">
-        <AnimatedNumber
-          value={
-            value
-          }
-          suffix={
-            suffix
-          }
-          delay={
-            delay
-          }
-          className="text-[23px] font-[750] tracking-[-0.045em] text-white"
-        />
-
-        <ArrowUpRight
-          size={
-            10
-          }
-          className="mt-1 text-white/0 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white/30"
-        />
-      </div>
-
-      <p className="mt-1 text-[9px] font-[650] text-white/55">
-        {label}
-      </p>
-
-      <p className="mt-0.5 hidden text-[8px] text-white/25 sm:block">
-        {hint}
-      </p>
-    </Link>
-  );
-}
-
-// ============================================================
-// OPERATION SIGNAL
-// ============================================================
-
-function OperationSignal({
-  color,
-  value,
-  label,
-  delay = 0,
-}: {
-  color: string;
-
-  value: number;
-
-  label: string;
-
-  delay?: number;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        className={[
-          "h-1.5 w-1.5 rounded-full",
-          color,
-        ].join(
-          " "
-        )}
-      />
-
-      <p className="text-[9px] text-white/35">
-        <AnimatedNumber
-          value={
-            value
-          }
-          delay={
-            delay
-          }
-          className="font-[700] text-white/65"
-        />{" "}
-        {label}
-      </p>
-    </div>
-  );
-}
-
-// ============================================================
-// MINI SLA
-// ============================================================
-
-function MiniSla({
-  value,
-  label,
-  dot,
-}: {
-  value: number;
-
-  label: string;
-
-  dot: string;
-}) {
-  return (
-    <div className="px-3 text-center">
-      <div className="flex items-center justify-center gap-1.5">
-        <span
-          className={[
-            "h-1.5 w-1.5 rounded-full",
-            dot,
-          ].join(
-            " "
-          )}
-        />
-
-        <AnimatedNumber
-          value={
-            value
-          }
-          className="text-[16px] font-[700]"
-        />
-      </div>
-
-      <p className="mt-1 text-[8px] text-base-content/35">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-// ============================================================
-// SUMMARY CHIP
-// ============================================================
-
-function SummaryChip({
-  label,
-  value,
-  variant,
-}: {
-  label: string;
-
-  value: number;
-
-  variant:
-    | "warning"
-    | "error";
-}) {
-  return (
-    <div
-      className={[
-        "flex items-center gap-2 rounded-lg border px-2.5 py-1.5",
-        variant ===
-        "error"
-          ? "border-red-200/70 bg-white/55 text-error"
-          : "border-amber-200/70 bg-white/55 text-warning",
-      ].join(
-        " "
-      )}
-    >
-      <AnimatedNumber
-        value={
-          value
-        }
-        className="text-[10px] font-[750]"
-      />
-
-      <span className="text-[8px] font-[650] text-base-content/40">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// ============================================================
-// PENDING MINI METRIC
-// ============================================================
-
-function PendingMiniMetric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-
-  value: number;
-
-  tone:
-    | "neutral"
-    | "warning"
-    | "error";
-}) {
-  return (
-    <div className="text-center">
-      <AnimatedNumber
-        value={
-          value
-        }
-        className={[
-          "text-[17px] font-[750]",
-          tone ===
-          "error"
-            ? "text-error"
-            : tone ===
-                "warning"
-              ? "text-warning"
-              : "text-base-content/70",
-        ].join(
-          " "
-        )}
-      />
-
-      <p className="mt-1 text-[8px] font-[600] uppercase tracking-[0.08em] text-base-content/30">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-// ============================================================
-// FLOW STAGE
-// ============================================================
-
-function FlowStage({
-  label,
-  fullLabel,
-  count,
-  statusKey,
-  first,
-  last,
-  delay = 0,
-  href,
-}: {
-  label: string;
-
-  fullLabel: string;
-
-  count: number;
-
-  statusKey: string;
-
-  first: boolean;
-
-  last: boolean;
-
-  delay?: number;
-
-  href: string;
-}) {
-  const tone =
-    getFlowTone(
-      statusKey
+  const type =
+    getProcessType(
+      item.type
     );
 
-  const active =
-    count >
-    0;
-
   return (
-    <Link
-      href={
-        href
-      }
-      className="group relative block px-2 text-center"
-    >
-      {!first && (
-        <div className="absolute left-0 right-1/2 top-[22px] h-[2px] bg-base-300/80" />
-      )}
-
-      {!last && (
-        <div className="absolute left-1/2 right-0 top-[22px] h-[2px] bg-base-300/80" />
-      )}
-
+    <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
       <div
-        className="tooltip"
-        data-tip={
-          fullLabel
-        }
+        className={[
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+          item.stage ===
+          "action"
+            ? "bg-warning/10 text-warning"
+            : item.stage ===
+                "completed"
+              ? "bg-success/10 text-success"
+              : "bg-base-200 text-base-content/40",
+        ].join(
+          " "
+        )}
       >
-        <div
+        <type.Icon
+          size={
+            17
+          }
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-[750] text-primary">
+            {
+              item.number
+            }
+          </p>
+
+          <span className="rounded-full border border-base-300 bg-base-200/50 px-2 py-0.5 text-[8px] font-[650] text-base-content/45">
+            {
+              type.label
+            }
+          </span>
+
+          {item.scNumber &&
+            item.type ===
+              "combined" && (
+            <span className="text-[9px] text-base-content/35">
+              SC{" "}
+              {
+                item.scNumber
+              }
+            </span>
+          )}
+        </div>
+
+        <p className="mt-1 truncate text-[12px] font-[650] text-base-content/75">
+          {
+            item.title
+          }
+        </p>
+
+        <p
           className={[
-            "relative z-10 mx-auto flex h-11 w-11 items-center justify-center rounded-[14px] border text-[13px] font-[750] transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-md",
-            active
-              ? `${tone.background} ${tone.text} ${tone.border}`
-              : "border-base-300 bg-base-100 text-base-content/25",
+            "mt-1 text-[10px] font-[600]",
+            item.stage ===
+            "action"
+              ? "text-warning"
+              : item.stage ===
+                  "completed"
+                ? "text-success"
+                : "text-base-content/45",
           ].join(
             " "
           )}
         >
-          <AnimatedNumber
-            value={
-              count
-            }
-            delay={
-              delay
-            }
-            className="font-[750]"
-          />
+          {
+            item.status
+          }
+        </p>
 
-          {active && (
-            <span
-              className={[
-                "absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-base-100",
-                tone.dot,
-              ].join(
-                " "
-              )}
-            />
-          )}
-        </div>
+        <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-base-content/35">
+          {
+            item.description
+          }
+        </p>
       </div>
 
-      <p
-        className={[
-          "mt-3 text-[9px] font-[650] transition group-hover:text-primary",
-          active
-            ? "text-base-content/65"
-            : "text-base-content/30",
-        ].join(
-          " "
-        )}
-      >
-        {label}
-      </p>
+      <div className="flex shrink-0 items-center gap-4">
+        <span className="hidden text-[9px] text-base-content/30 sm:block">
+          {formatDate(
+            item.date
+          )}
+        </span>
 
-      <p className="mt-1 text-[7px] uppercase tracking-[0.1em] text-base-content/20">
-        {active
-          ? "Ativo"
-          : "Sem itens"}
-      </p>
-    </Link>
+        <Link
+          href={
+            item.href
+          }
+          className={[
+            "inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-[10px] font-[650] transition",
+            prominent ||
+            item.stage ===
+              "action"
+              ? "bg-primary text-white hover:bg-primary/90"
+              : "border border-base-300 bg-base-100 text-base-content/60 hover:bg-base-200",
+          ].join(
+            " "
+          )}
+        >
+          {
+            item.actionLabel
+          }
+
+          <ArrowRight
+            size={
+              12
+            }
+          />
+        </Link>
+      </div>
+    </div>
   );
 }
 
 // ============================================================
-// ATTENTION ITEM
+// FINANCE PRIORITY ROW
 // ============================================================
 
-function AttentionItem({
-  icon: Icon,
-  title,
-  description,
-  value,
-  href,
-  variant,
+function PriorityRow({
+  item,
 }: {
-  icon: LucideIcon;
-
-  title: string;
-
-  description: string;
-
-  value: number;
-
-  href: string;
-
-  variant:
-    | "warning"
-    | "error";
+  item:
+    PriorityItem;
 }) {
-  const danger =
-    variant ===
-    "error";
+  const Icon =
+    item.icon;
 
   return (
     <Link
       href={
-        href
+        item.href
       }
-      className="group flex items-center gap-3 rounded-[15px] px-3 py-3.5 transition hover:bg-base-200/70"
+      className="group flex items-center gap-4 px-5 py-4 transition hover:bg-base-200/50 sm:px-6"
     >
       <div
         className={[
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-          value ===
-          0
-            ? "bg-base-200 text-base-content/25"
-            : danger
-              ? "bg-error/10 text-error"
-              : "bg-warning/10 text-warning",
+          item.tone ===
+          "error"
+            ? "bg-error/10 text-error"
+            : item.tone ===
+                "warning"
+              ? "bg-warning/10 text-warning"
+              : "bg-base-200 text-base-content/40",
         ].join(
           " "
         )}
       >
         <Icon
           size={
-            16
+            17
           }
         />
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] font-[650] text-base-content/70">
-          {title}
+        <p className="text-[11px] font-[650] text-base-content/70">
+          {
+            item.title
+          }
         </p>
 
-        <p className="mt-1 truncate text-[9px] text-base-content/35">
-          {description}
+        <p className="mt-1 text-[9px] text-base-content/35">
+          {
+            item.description
+          }
         </p>
       </div>
 
       <AnimatedNumber
         value={
-          value
+          item.count
         }
         className={[
-          "text-[15px] font-[750]",
-          value ===
-          0
-            ? "text-base-content/20"
-            : danger
-              ? "text-error"
-              : "text-warning",
+          "text-[19px] font-[750]",
+          item.tone ===
+          "error"
+            ? "text-error"
+            : item.tone ===
+                "warning"
+              ? "text-warning"
+              : "text-base-content/65",
         ].join(
           " "
         )}
       />
 
-      <ChevronRight
+      <ArrowRight
         size={
-          13
+          14
         }
-        className="text-base-content/15 transition group-hover:translate-x-0.5 group-hover:text-primary"
+        className="text-base-content/15 transition group-hover:translate-x-1 group-hover:text-primary"
       />
     </Link>
   );
 }
 
 // ============================================================
-// TIMELINE
+// ACTIVITY PANEL
 // ============================================================
 
-function TimelineActivity({
-  activity,
-  last,
+function ActivityPanel({
+  notifications,
+  personal = false,
 }: {
-  activity: NotificationRow;
+  notifications:
+    NotificationRow[];
 
-  last: boolean;
+  personal?:
+    boolean;
+}) {
+  return (
+    <section className="projeta-panel overflow-hidden">
+      <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5">
+        <div>
+          <p className="projeta-section-label">
+            Atividade
+          </p>
+
+          <h2 className="mt-2 text-[15px] font-[650]">
+            {personal
+              ? "Atualizações para você"
+              : "Atividade recente"}
+          </h2>
+        </div>
+
+        <Activity
+          size={
+            17
+          }
+          className="text-base-content/20"
+        />
+      </div>
+
+      {notifications.length ===
+      0 ? (
+        <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
+          <Activity
+            size={
+              23
+            }
+            className="text-base-content/20"
+          />
+
+          <p className="mt-4 text-[12px] font-[650]">
+            Sem atualizações recentes
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-base-300/60">
+          {notifications.map(
+            (
+              notification
+            ) => (
+              <NotificationRowItem
+                key={
+                  notification.id
+                }
+                notification={
+                  notification
+                }
+              />
+            )
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+
+function NotificationRowItem({
+  notification,
+}: {
+  notification:
+    NotificationRow;
 }) {
   const href =
-    activity.action_url &&
-    activity.action_url.startsWith(
+    notification.action_url &&
+    notification.action_url.startsWith(
       "/"
     )
-      ? activity.action_url
+      ? notification.action_url
       : "/notificacoes";
-
-  const tone =
-    getActivityTone(
-      activity.level
-    );
 
   return (
     <Link
       href={
         href
       }
-      className="group relative flex gap-4 py-4"
+      className="group flex gap-3 px-5 py-4 transition hover:bg-base-200/50"
     >
-      <div className="relative flex w-7 shrink-0 justify-center">
-        {!last && (
-          <div className="absolute bottom-[-16px] top-[10px] w-px bg-base-300" />
+      <span
+        className={[
+          "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+          notification.level ===
+          "error"
+            ? "bg-error"
+            : notification.level ===
+                "warning"
+              ? "bg-warning"
+              : notification.level ===
+                  "success"
+                ? "bg-success"
+                : "bg-info",
+        ].join(
+          " "
         )}
+      />
 
-        <span
-          className={[
-            "relative z-10 mt-1 h-2.5 w-2.5 rounded-full border-2 border-base-100 ring-2",
-            tone.dot,
-            tone.ring,
-          ].join(
-            " "
-          )}
-        />
-      </div>
-
-      <div className="min-w-0 flex-1 border-b border-base-300/50 pb-4">
-        <div className="flex justify-between gap-4">
-          <p className="text-[11px] font-[650] leading-5 text-base-content/70">
-            {activity.title}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <p className="line-clamp-1 text-[10px] font-[650] text-base-content/65">
+            {
+              notification.title
+            }
           </p>
 
           <span className="shrink-0 text-[8px] text-base-content/25">
             {formatRelativeTime(
-              activity.created_at
+              notification.created_at
             )}
           </span>
         </div>
 
-        {activity.message && (
-          <p className="mt-1 line-clamp-2 text-[9px] leading-[17px] text-base-content/38">
-            {activity.message}
+        {notification.message && (
+          <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-base-content/35">
+            {
+              notification.message
+            }
           </p>
         )}
       </div>
@@ -2629,97 +3154,266 @@ function TimelineActivity({
 }
 
 // ============================================================
-// PERFORMANCE
+// MÉTRICA
 // ============================================================
 
-function PerformanceItem({
+function MetricCard({
+  icon:
+    Icon,
   label,
   value,
-  percentage,
-  dot,
-  barClassName,
+  href,
+  tone = "default",
 }: {
-  label: string;
+  icon:
+    LucideIcon;
 
-  value: number;
+  label:
+    string;
 
-  percentage: number;
+  value:
+    number;
 
-  dot: string;
+  href?:
+    string;
 
-  barClassName: string;
+  tone?:
+    | "default"
+    | "warning"
+    | "error"
+    | "success";
+}) {
+  const content = (
+    <div className="h-full rounded-[18px] border border-base-300 bg-base-100 p-5 transition hover:border-base-300/80 hover:shadow-sm">
+      <div
+        className={[
+          "flex h-10 w-10 items-center justify-center rounded-xl",
+          tone ===
+          "warning"
+            ? "bg-warning/10 text-warning"
+            : tone ===
+                "error"
+              ? "bg-error/10 text-error"
+              : tone ===
+                  "success"
+                ? "bg-success/10 text-success"
+                : "bg-base-200 text-base-content/40",
+        ].join(
+          " "
+        )}
+      >
+        <Icon
+          size={
+            18
+          }
+        />
+      </div>
+
+      <AnimatedNumber
+        value={
+          value
+        }
+        className="mt-4 block text-[27px] font-[750] tracking-[-0.045em]"
+      />
+
+      <p className="mt-1 text-[10px] font-[550] text-base-content/40">
+        {
+          label
+        }
+      </p>
+    </div>
+  );
+
+  if (
+    !href
+  ) {
+    return content;
+  }
+
+  return (
+    <Link
+      href={
+        href
+      }
+      className="block h-full"
+    >
+      {
+        content
+      }
+    </Link>
+  );
+}
+
+// ============================================================
+// DARK METRIC
+// ============================================================
+
+function DarkMetric({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    number;
 }) {
   return (
-    <div className="projeta-interactive rounded-[15px] border border-base-300/80 bg-base-200/25 p-4">
-      <div className="flex items-center gap-2">
-        <span
-          className={[
-            "h-2 w-2 rounded-full",
-            dot,
-          ].join(
-            " "
-          )}
-        />
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4">
+      <AnimatedNumber
+        value={
+          value
+        }
+        className="text-[26px] font-[750] tracking-[-0.04em] text-white"
+      />
 
-        <p className="text-[9px] text-base-content/40">
-          {label}
-        </p>
-      </div>
-
-      <div className="mt-4 flex items-end justify-between">
-        <AnimatedNumber
-          value={
-            value
-          }
-          className="text-[23px] font-[750]"
-        />
-
-        <AnimatedNumber
-          value={
-            percentage
-          }
-          suffix="%"
-          className="text-[10px] font-[700] text-base-content/35"
-        />
-      </div>
-
-      <div className="mt-4">
-        <AnimatedProgress
-          value={
-            percentage
-          }
-          height={
-            5
-          }
-          barClassName={
-            barClassName
-          }
-        />
-      </div>
+      <p className="mt-1 text-[9px] text-white/35">
+        {
+          label
+        }
+      </p>
     </div>
   );
 }
 
 // ============================================================
-// COMMAND ACTION
+// HEALTH METRIC
 // ============================================================
 
-function CommandAction({
-  icon: Icon,
+function HealthMetric({
+  value,
+  label,
+  tone,
+}: {
+  value:
+    number;
+
+  label:
+    string;
+
+  tone:
+    | "success"
+    | "warning"
+    | "error";
+}) {
+  return (
+    <div className="px-3 text-center">
+      <p
+        className={[
+          "text-[19px] font-[750]",
+          tone ===
+          "success"
+            ? "text-success"
+            : tone ===
+                "warning"
+              ? "text-warning"
+              : "text-error",
+        ].join(
+          " "
+        )}
+      >
+        {
+          value
+        }
+      </p>
+
+      <p className="mt-1 text-[8px] text-base-content/35">
+        {
+          label
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// SMALL OPERATION ROW
+// ============================================================
+
+function SmallOperationRow({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    number;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-base-300/50 py-2.5 last:border-0">
+      <p className="text-[9px] text-base-content/40">
+        {
+          label
+        }
+      </p>
+
+      <p className="text-[11px] font-[700] text-base-content/65">
+        {
+          value
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// OPERATION BLOCK
+// ============================================================
+
+function OperationBlock({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    number;
+}) {
+  return (
+    <div className="bg-base-100 p-5">
+      <p className="text-[23px] font-[750] tracking-[-0.04em]">
+        {
+          value
+        }
+      </p>
+
+      <p className="mt-1 text-[9px] text-base-content/35">
+        {
+          label
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// QUICK LINK
+// ============================================================
+
+function QuickLink({
+  icon:
+    Icon,
   title,
   description,
   href,
   primary = false,
 }: {
-  icon: LucideIcon;
+  icon:
+    LucideIcon;
 
-  title: string;
+  title:
+    string;
 
-  description: string;
+  description:
+    string;
 
-  href: string;
+  href:
+    string;
 
-  primary?: boolean;
+  primary?:
+    boolean;
 }) {
   return (
     <Link
@@ -2727,7 +3421,7 @@ function CommandAction({
         href
       }
       className={[
-        "group flex items-center gap-3 border-b border-base-300/60 px-5 py-4 transition",
+        "group flex items-center gap-3 border-b border-base-300/60 px-5 py-4 transition last:border-0",
         primary
           ? "bg-primary/[0.035] hover:bg-primary/[0.065]"
           : "hover:bg-base-200/60",
@@ -2737,7 +3431,7 @@ function CommandAction({
     >
       <div
         className={[
-          "flex h-9 w-9 items-center justify-center rounded-xl",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
           primary
             ? "bg-primary text-white"
             : "bg-base-200 text-base-content/40 group-hover:text-primary",
@@ -2753,250 +3447,382 @@ function CommandAction({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-[650] text-base-content/70">
-          {title}
+        <p className="text-[10px] font-[650] text-base-content/70">
+          {
+            title
+          }
         </p>
 
-        <p className="mt-0.5 truncate text-[9px] text-base-content/35">
-          {description}
+        <p className="mt-1 truncate text-[9px] text-base-content/35">
+          {
+            description
+          }
         </p>
       </div>
 
-      <ArrowUpRight
+      <ArrowRight
         size={
           13
         }
-        className="text-base-content/15 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary"
+        className="text-base-content/15 transition group-hover:translate-x-0.5 group-hover:text-primary"
       />
     </Link>
   );
 }
 
 // ============================================================
-// FLOW TONE
+// SHORTCUT CARD
 // ============================================================
 
-function getFlowTone(
-  key: string
+function ShortcutCard({
+  icon:
+    Icon,
+  title,
+  description,
+  href,
+  primary = false,
+}: {
+  icon:
+    LucideIcon;
+
+  title:
+    string;
+
+  description:
+    string;
+
+  href:
+    string;
+
+  primary?:
+    boolean;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      className={[
+        "group rounded-[18px] border p-5 transition hover:-translate-y-0.5 hover:shadow-sm",
+        primary
+          ? "border-primary/20 bg-primary/[0.035]"
+          : "border-base-300 bg-base-100",
+      ].join(
+        " "
+      )}
+    >
+      <div
+        className={[
+          "flex h-10 w-10 items-center justify-center rounded-xl",
+          primary
+            ? "bg-primary text-white"
+            : "bg-base-200 text-base-content/40",
+        ].join(
+          " "
+        )}
+      >
+        <Icon
+          size={
+            17
+          }
+        />
+      </div>
+
+      <p className="mt-4 text-[12px] font-[650] text-base-content/70">
+        {
+          title
+        }
+      </p>
+
+      <p className="mt-1 text-[9px] leading-4 text-base-content/35">
+        {
+          description
+        }
+      </p>
+
+      <div className="mt-4 flex items-center gap-1 text-[9px] font-[650] text-primary">
+        Acessar
+
+        <ArrowRight
+          size={
+            12
+          }
+        />
+      </div>
+    </Link>
+  );
+}
+
+// ============================================================
+// FOOTER
+// ============================================================
+
+function DashboardFooter() {
+  return (
+    <footer className="mt-7 flex flex-col gap-2 border-t border-base-300/60 py-5 text-[8px] font-[550] text-base-content/25 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2">
+        <span className="status status-success status-xs" />
+
+        Dados sincronizados com a operação
+      </div>
+
+      <span className="uppercase tracking-[0.14em]">
+        Projeta Compras OS
+      </span>
+    </footer>
+  );
+}
+
+// ============================================================
+// TIPO DO PROCESSO
+// ============================================================
+
+function getProcessType(
+  type:
+    UserProcess["type"]
+) {
+  if (
+    type ===
+    "combined"
+  ) {
+    return {
+      label:
+        "Cartão + Compra",
+
+      Icon:
+        PackageCheck,
+    };
+  }
+
+  if (
+    type ===
+    "purchase"
+  ) {
+    return {
+      label:
+        "Compra",
+
+      Icon:
+        ShoppingCart,
+    };
+  }
+
+  return {
+    label:
+      "Cartão",
+
+    Icon:
+      CreditCard,
+  };
+}
+
+// ============================================================
+// STATUS CARTÃO
+// ============================================================
+
+function getCardStatusLabel(
+  status:
+    string
+) {
+  const labels:
+    Record<
+      string,
+      string
+    > = {
+    submitted:
+      "Solicitação enviada",
+
+    under_review:
+      "Em análise",
+
+    awaiting_information:
+      "Aguardando suas informações",
+
+    awaiting_approval:
+      "Aguardando aprovação",
+
+    approved:
+      "Aprovado",
+
+    rejected:
+      "Reprovado",
+
+    card_reserved:
+      "Cartão reservado",
+
+    card_delivered:
+      "Cartão liberado",
+
+    in_use:
+      "Cartão em utilização",
+
+    awaiting_return:
+      "Aguardando devolução",
+
+    returned:
+      "Cartão devolvido",
+
+    accountability_review:
+      "Devolução em conferência",
+
+    completed:
+      "Concluído",
+
+    cancelled:
+      "Cancelado",
+  };
+
+  return (
+    labels[
+      status
+    ] ??
+    status
+  );
+}
+
+function getCardDescription(
+  status:
+    string
 ) {
   switch (
-    key
+    status
   ) {
+    case "submitted":
+      return "Sua solicitação foi enviada e aguarda análise do Financeiro.";
+
+    case "under_review":
+      return "O Financeiro está analisando sua solicitação.";
+
+    case "awaiting_information":
+      return "Precisamos de informações adicionais para continuar.";
+
+    case "awaiting_approval":
+      return "Sua solicitação está aguardando aprovação.";
+
+    case "approved":
+      return "Sua solicitação foi aprovada.";
+
+    case "card_reserved":
+      return "O cartão foi reservado para sua utilização.";
+
+    case "card_delivered":
+    case "in_use":
+      return "O cartão está liberado para utilização.";
+
+    case "awaiting_return":
+      return "O cartão precisa ser devolvido para continuar o processo.";
+
+    case "returned":
+      return "O cartão foi devolvido e seguirá para conferência.";
+
+    case "accountability_review":
+      return "O Financeiro está conferindo sua devolução.";
+
+    case "completed":
+      return "O processo foi concluído.";
+
+    case "rejected":
+      return "A solicitação foi encerrada após reprovação.";
+
+    case "cancelled":
+      return "A solicitação foi cancelada.";
+
+    default:
+      return "Acompanhe o andamento da sua solicitação.";
+  }
+}
+
+// ============================================================
+// STATUS SIENGE
+// ============================================================
+
+function getSiengeDescription(
+  status:
+    | string
+    | null
+) {
+  switch (
+    status
+  ) {
+    case "Solicitação recebida":
+      return "Sua solicitação foi recebida e está aguardando o andamento da compra.";
+
     case "Em cotação":
-      return {
-        background:
-          "bg-orange-50",
-
-        text:
-          "text-orange-600",
-
-        border:
-          "border-orange-200",
-
-        dot:
-          "bg-orange-500",
-      };
+      return "Suprimentos está realizando a cotação.";
 
     case "Em aprovação":
-      return {
-        background:
-          "bg-amber-50",
-
-        text:
-          "text-amber-700",
-
-        border:
-          "border-amber-200",
-
-        dot:
-          "bg-amber-500",
-      };
+      return "A compra está aguardando aprovação.";
 
     case "Compra realizada":
     case "Compra via cartão":
-      return {
-        background:
-          "bg-violet-50",
+      return "A compra foi realizada. Aguarde a entrega do material.";
 
-        text:
-          "text-violet-700",
+    case "Disponível para retirada":
+      return "O material está disponível para retirada.";
 
-        border:
-          "border-violet-200",
-
-        dot:
-          "bg-violet-500",
-      };
-
-    case "delivery":
-      return {
-        background:
-          "bg-blue-50",
-
-        text:
-          "text-blue-700",
-
-        border:
-          "border-blue-200",
-
-        dot:
-          "bg-blue-500",
-      };
+    case "Em processo de entrega":
+      return "O pedido está em processo de entrega.";
 
     case "Entregue":
-      return {
-        background:
-          "bg-emerald-50",
-
-        text:
-          "text-emerald-700",
-
-        border:
-          "border-emerald-200",
-
-        dot:
-          "bg-emerald-500",
-      };
+      return "A entrega foi registrada.";
 
     default:
-      return {
-        background:
-          "bg-slate-50",
-
-        text:
-          "text-slate-600",
-
-        border:
-          "border-slate-200",
-
-        dot:
-          "bg-slate-400",
-      };
+      return "Sua solicitação está sendo processada.";
   }
 }
 
 // ============================================================
-// ACTIVITY
+// FORMATADORES
 // ============================================================
 
-function getActivityTone(
-  level: string
+function normalize(
+  value:
+    | string
+    | null
+    | undefined
 ) {
-  switch (
-    level
-  ) {
-    case "success":
-      return {
-        dot:
-          "bg-success",
-
-        ring:
-          "ring-success/15",
-      };
-
-    case "warning":
-      return {
-        dot:
-          "bg-warning",
-
-        ring:
-          "ring-warning/15",
-      };
-
-    case "error":
-      return {
-        dot:
-          "bg-error",
-
-        ring:
-          "ring-error/15",
-      };
-
-    default:
-      return {
-        dot:
-          "bg-info",
-
-        ring:
-          "ring-info/15",
-      };
-  }
+  return String(
+    value ??
+    ""
+  )
+    .normalize(
+      "NFD"
+    )
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .trim()
+    .toUpperCase();
 }
 
-// ============================================================
-// SLA
-// ============================================================
-
-function getSlaTextColor(
-  value: number
+function formatDate(
+  value:
+    | string
+    | null
+    | undefined
 ) {
   if (
-    value >=
-    80
+    !value
   ) {
-    return "text-success";
+    return "-";
   }
+
+  const match =
+    String(
+      value
+    ).match(
+      /^(\d{4})-(\d{2})-(\d{2})/
+    );
 
   if (
-    value >=
-    60
+    !match
   ) {
-    return "text-warning";
+    return "-";
   }
 
-  return "text-error";
+  return `${match[3]}/${match[2]}/${match[1]}`;
 }
-
-function getSlaBarColor(
-  value: number
-) {
-  if (
-    value >=
-    80
-  ) {
-    return "bg-success";
-  }
-
-  if (
-    value >=
-    60
-  ) {
-    return "bg-warning";
-  }
-
-  return "bg-error";
-}
-
-function getSlaLabel(
-  value: number
-) {
-  if (
-    value >=
-    90
-  ) {
-    return "Excelente";
-  }
-
-  if (
-    value >=
-    80
-  ) {
-    return "Saudável";
-  }
-
-  if (
-    value >=
-    60
-  ) {
-    return "Em atenção";
-  }
-
-  return "Crítico";
-}
-
-// ============================================================
-// DATA
-// ============================================================
 
 function formatCurrentDate() {
   return new Intl.DateTimeFormat(
@@ -3016,12 +3842,9 @@ function formatCurrentDate() {
   );
 }
 
-// ============================================================
-// TEMPO
-// ============================================================
-
 function formatRelativeTime(
-  value: string
+  value:
+    string
 ) {
   const date =
     new Date(
@@ -3090,4 +3913,27 @@ function formatRelativeTime(
   }
 
   return `há ${days} dias`;
+}
+
+function logQueryError(
+  context:
+    string,
+
+  error:
+    | {
+        message?: string;
+      }
+    | null
+    | undefined
+) {
+  if (
+    !error
+  ) {
+    return;
+  }
+
+  console.error(
+    `Erro ao carregar ${context}:`,
+    error
+  );
 }

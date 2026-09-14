@@ -18,6 +18,7 @@ import {
 
 import {
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   CreditCard,
   FileCheck2,
@@ -162,6 +163,30 @@ export default function SystemSidebar({
     );
 
   // =========================================================
+  // DIREÇÃO
+  // =========================================================
+  //
+  // A Visão Executiva pode ser acessada por:
+  //
+  // - direcao
+  // - admin
+  // - superadmin
+  //
+  // Financeiro comum não recebe acesso automaticamente.
+  // =========================================================
+
+  const canDirection =
+    roles.includes(
+      "direcao"
+    ) ||
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
+
+  // =========================================================
   // CARREGAR RESUMO
   // =========================================================
 
@@ -246,21 +271,6 @@ export default function SystemSidebar({
   // =========================================================
   // ATUALIZAÇÃO AUTOMÁTICA
   // =========================================================
-  //
-  // IMPORTANTE:
-  //
-  // Não depende mais do pathname.
-  //
-  // Antes:
-  // trocar qualquer página => refazer consulta pesada.
-  //
-  // Agora:
-  // - carrega uma vez ao montar;
-  // - atualiza a cada 2 minutos;
-  // - atualiza ao retornar para a aba;
-  // - atualiza sob demanda através do evento:
-  //   "projeta:pending-refresh".
-  // =========================================================
 
   useEffect(
     () => {
@@ -343,6 +353,13 @@ export default function SystemSidebar({
     pathname ===
     "/dashboard";
 
+  const isDirection =
+    pathname ===
+      "/direcao" ||
+    pathname.startsWith(
+      "/direcao/"
+    );
+
   const isNewRequest =
     pathname.startsWith(
       "/solicitacoes/nova"
@@ -417,11 +434,22 @@ export default function SystemSidebar({
   // =========================================================
   // MOBILE
   // =========================================================
+  //
+  // Base:
+  // 6 itens
+  //
+  // + Direção
+  // + Financeiro
+  // =========================================================
 
   const mobileColumns =
+    canDirection &&
     canFinance
-      ? "grid-cols-7"
-      : "grid-cols-6";
+      ? "grid-cols-8"
+      : canDirection ||
+          canFinance
+        ? "grid-cols-7"
+        : "grid-cols-6";
 
   // =========================================================
   // CLASSES
@@ -520,13 +548,17 @@ export default function SystemSidebar({
         ==================================================== */}
 
         <nav className="projeta-sidebar-scroll flex-1 overflow-y-auto px-3 py-5">
-          {/* VISÃO GERAL */}
+          {/* =================================================
+              VISÃO GERAL
+          ================================================== */}
 
           <SidebarSection>
             Visão geral
           </SidebarSection>
 
           <div className="space-y-1">
+            {/* DASHBOARD */}
+
             <Link
               href="/dashboard"
               className={navClass(
@@ -543,14 +575,56 @@ export default function SystemSidebar({
                 )}
               >
                 <LayoutDashboard
-                  size={16}
+                  size={
+                    16
+                  }
                 />
               </span>
 
               Dashboard
             </Link>
 
-            {/* PENDÊNCIAS */}
+            {/* ===============================================
+                VISÃO EXECUTIVA
+            ================================================ */}
+
+            {canDirection && (
+              <Link
+                href="/direcao"
+                title="Visão consolidada para acompanhamento da Direção"
+                className={navClass(
+                  isDirection
+                )}
+              >
+                {isDirection && (
+                  <ActiveIndicator />
+                )}
+
+                <span
+                  className={iconClass(
+                    isDirection
+                  )}
+                >
+                  <BarChart3
+                    size={
+                      16
+                    }
+                  />
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  Visão Executiva
+                </span>
+
+                <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[8px] font-[650] uppercase tracking-wide text-red-300/80">
+                  Direção
+                </span>
+              </Link>
+            )}
+
+            {/* ===============================================
+                PENDÊNCIAS
+            ================================================ */}
 
             <Link
               href="/pendencias"
@@ -573,7 +647,9 @@ export default function SystemSidebar({
                 )}
               >
                 <ListTodo
-                  size={16}
+                  size={
+                    16
+                  }
                 />
               </span>
 
@@ -623,7 +699,9 @@ export default function SystemSidebar({
                 )}
               >
                 <CreditCard
-                  size={16}
+                  size={
+                    16
+                  }
                 />
               </span>
 
@@ -646,7 +724,9 @@ export default function SystemSidebar({
                 )}
               >
                 <RotateCcw
-                  size={16}
+                  size={
+                    16
+                  }
                 />
               </span>
 
@@ -669,7 +749,9 @@ export default function SystemSidebar({
                 )}
               >
                 <PackageSearch
-                  size={16}
+                  size={
+                    16
+                  }
                 />
               </span>
 
@@ -712,7 +794,9 @@ export default function SystemSidebar({
                     )}
                   >
                     <WalletCards
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   </span>
 
@@ -735,7 +819,9 @@ export default function SystemSidebar({
                     )}
                   >
                     <CreditCard
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   </span>
 
@@ -758,7 +844,9 @@ export default function SystemSidebar({
                     )}
                   >
                     <FileCheck2
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   </span>
 
@@ -781,7 +869,9 @@ export default function SystemSidebar({
                     )}
                   >
                     <FileSpreadsheet
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   </span>
 
@@ -820,7 +910,9 @@ export default function SystemSidebar({
                     )}
                   >
                     <UsersRound
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   </span>
 
@@ -890,7 +982,9 @@ export default function SystemSidebar({
                 title="Sair"
               >
                 <LogOut
-                  size={15}
+                  size={
+                    15
+                  }
                 />
               </button>
             </form>
@@ -910,6 +1004,8 @@ export default function SystemSidebar({
           " "
         )}
       >
+        {/* DASHBOARD */}
+
         <Link
           href="/dashboard"
           className={mobileClass(
@@ -923,11 +1019,42 @@ export default function SystemSidebar({
           />
 
           <LayoutDashboard
-            size={17}
+            size={
+              17
+            }
           />
 
           Início
         </Link>
+
+        {/* ===============================================
+            VISÃO EXECUTIVA
+        ================================================ */}
+
+        {canDirection && (
+          <Link
+            href="/direcao"
+            className={mobileClass(
+              isDirection
+            )}
+          >
+            <MobileActive
+              active={
+                isDirection
+              }
+            />
+
+            <BarChart3
+              size={
+                17
+              }
+            />
+
+            Executivo
+          </Link>
+        )}
+
+        {/* SOLICITAR */}
 
         <Link
           href="/solicitacoes/nova"
@@ -942,11 +1069,15 @@ export default function SystemSidebar({
           />
 
           <Send
-            size={17}
+            size={
+              17
+            }
           />
 
           Solicitar
         </Link>
+
+        {/* SOLICITAÇÕES */}
 
         <Link
           href="/solicitacoes"
@@ -961,11 +1092,15 @@ export default function SystemSidebar({
           />
 
           <CreditCard
-            size={17}
+            size={
+              17
+            }
           />
 
           Cartões
         </Link>
+
+        {/* DEVOLUÇÕES */}
 
         <Link
           href="/devolucoes"
@@ -980,11 +1115,15 @@ export default function SystemSidebar({
           />
 
           <RotateCcw
-            size={17}
+            size={
+              17
+            }
           />
 
           Devolver
         </Link>
+
+        {/* PEDIDOS */}
 
         <Link
           href="/meus-pedidos"
@@ -999,7 +1138,9 @@ export default function SystemSidebar({
           />
 
           <PackageSearch
-            size={17}
+            size={
+              17
+            }
           />
 
           Pedidos
@@ -1021,7 +1162,9 @@ export default function SystemSidebar({
 
           <div className="relative">
             <ListTodo
-              size={17}
+              size={
+                17
+              }
             />
 
             {!loadingPending &&
@@ -1049,6 +1192,8 @@ export default function SystemSidebar({
           Pend.
         </Link>
 
+        {/* FINANCEIRO */}
+
         {canFinance && (
           <Link
             href="/financeiro/solicitacoes"
@@ -1067,7 +1212,9 @@ export default function SystemSidebar({
             />
 
             <Gauge
-              size={17}
+              size={
+                17
+              }
             />
 
             Financ.
@@ -1181,7 +1328,9 @@ function PendingStatusPanel({
           </div>
 
           <CheckCircle2
-            size={14}
+            size={
+              14
+            }
             className="ml-auto text-success"
           />
         </div>
@@ -1215,7 +1364,9 @@ function PendingStatusPanel({
           )}
         >
           <AlertTriangle
-            size={13}
+            size={
+              13
+            }
           />
         </div>
 

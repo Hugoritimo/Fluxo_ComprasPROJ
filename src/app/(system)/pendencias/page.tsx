@@ -1,19 +1,26 @@
+import PendenciasClient from "@/components/pendencias/pendencias-client";
+
+import type {
+  PendingEntry,
+  PendingFilter,
+} from "@/components/pendencias/pendencias-client";
+
 import {
-  redirect,
-} from "next/navigation";
+  buildPendingSummary,
+} from "@/lib/pendencias/summary";
+
+import type {
+  PendingDeliveryConfirmationRow,
+  PendingReceiptItemRow,
+} from "@/lib/pendencias/summary";
 
 import {
   createClient,
 } from "@/lib/supabase/server";
 
 import {
-  buildPendingSummary,
-} from "@/lib/pendencias/summary";
-
-import PendenciasClient, {
-  type PendingEntry,
-  type PendingFilter,
-} from "@/components/pendencias/pendencias-client";
+  redirect,
+} from "next/navigation";
 
 // ============================================================
 // TIPOS
@@ -83,6 +90,64 @@ type SlaRow = {
     | null;
 };
 
+type ReceiptItemRow =
+  PendingReceiptItemRow & {
+    insumo:
+      | string
+      | null;
+
+    requester_sienge_username:
+      | string
+      | null;
+
+    cost_center_or_site:
+      | string
+      | null;
+
+    supplier_name:
+      | string
+      | null;
+  };
+
+type DeliveryConfirmationRow =
+  PendingDeliveryConfirmationRow & {
+    delivery_date:
+      | string
+      | null;
+
+    received_by:
+      | string
+      | null;
+
+    invoice_number:
+      | string
+      | null;
+
+    updated_at:
+      | string
+      | null;
+  };
+
+type RequestSummaryRow = {
+  request_key: string;
+
+  sc_number:
+    | string
+    | null;
+
+  requester_profile_id:
+    | string
+    | null;
+
+  requester_sienge_username:
+    | string
+    | null;
+
+  cost_center_or_site:
+    | string
+    | null;
+};
+
 type SiengeUserRow = {
   requester_sienge_username:
     | string
@@ -143,7 +208,9 @@ export default async function PendenciasPage({
   const userId =
     claimsData?.claims?.sub;
 
-  if (!userId) {
+  if (
+    !userId
+  ) {
     redirect(
       "/login"
     );
@@ -194,6 +261,11 @@ export default async function PendenciasPage({
         )
     );
 
+  const isDirection =
+    roles.includes(
+      "direcao"
+    );
+
   const canFinance =
     roles.includes(
       "finance"
@@ -206,6 +278,19 @@ export default async function PendenciasPage({
     );
 
   // =========================================================
+  // DIREÇÃO NÃO ACESSA CENTRAL OPERACIONAL
+  // =========================================================
+
+  if (
+    isDirection &&
+    !canFinance
+  ) {
+    redirect(
+      "/direcao"
+    );
+  }
+
+  // =========================================================
   // FILTRO INICIAL
   // =========================================================
 
@@ -216,6 +301,7 @@ export default async function PendenciasPage({
       "atencao",
       "sla",
       "entrega",
+      "recebimento",
       "usuarios",
       "alertas",
     ];
@@ -277,11 +363,7 @@ export default async function PendenciasPage({
       );
 
   // =========================================================
-  // SEGURANÇA
-  // =========================================================
-  //
-  // Usuário comum só pode carregar suas próprias SCs,
-  // independentemente da política da view.
+  // SEGURANÇA DO SLA
   // =========================================================
 
   if (
@@ -289,6 +371,105 @@ export default async function PendenciasPage({
   ) {
     slaQuery =
       slaQuery.eq(
+        "requester_profile_id",
+        userId
+      );
+  }
+
+  // =========================================================
+  // ITENS PARA CONFIRMAÇÃO DO RECEBIMENTO
+  // =========================================================
+
+  let receiptItemsQuery =
+    supabase
+      .from(
+        "sienge_purchase_items"
+      )
+      .select(
+        `
+        id,
+        sc_number,
+        insumo,
+        requester_sienge_username,
+        requester_profile_id,
+        cost_center_or_site,
+        order_number,
+        supplier_name,
+        initial_delivery_forecast,
+        delivery_or_pickup_forecast,
+        delivery_status
+        `
+      );
+
+  // =========================================================
+  // SOLICITANTE VÊ SOMENTE OS PRÓPRIOS PEDIDOS
+  // =========================================================
+
+  if (
+    !canFinance
+  ) {
+    receiptItemsQuery =
+      receiptItemsQuery.eq(
+        "requester_profile_id",
+        userId
+      );
+  }
+
+  // =========================================================
+  // CONFIRMAÇÕES DO SOLICITANTE
+  // =========================================================
+
+  let confirmationsQuery =
+    supabase
+      .from(
+        "sienge_requester_delivery_confirmations"
+      )
+      .select(
+        `
+        item_id,
+        requester_profile_id,
+        delivery_status,
+        delivery_date,
+        received_by,
+        invoice_number,
+        updated_at
+        `
+      );
+
+  if (
+    !canFinance
+  ) {
+    confirmationsQuery =
+      confirmationsQuery.eq(
+        "requester_profile_id",
+        userId
+      );
+  }
+
+  // =========================================================
+  // RESUMOS PARA DESCOBRIR O REQUEST KEY
+  // =========================================================
+
+  let requestSummariesQuery =
+    supabase
+      .from(
+        "v_sienge_request_summary"
+      )
+      .select(
+        `
+        request_key,
+        sc_number,
+        requester_profile_id,
+        requester_sienge_username,
+        cost_center_or_site
+        `
+      );
+
+  if (
+    !canFinance
+  ) {
+    requestSummariesQuery =
+      requestSummariesQuery.eq(
         "requester_profile_id",
         userId
       );
@@ -380,11 +561,17 @@ export default async function PendenciasPage({
 
   const [
     slaResult,
+    receiptItemsResult,
+    confirmationsResult,
+    requestSummariesResult,
     siengeUsersResult,
     notificationsResult,
   ] =
     await Promise.all([
       slaQuery,
+      receiptItemsQuery,
+      confirmationsQuery,
+      requestSummariesQuery,
       siengeUsersPromise,
       notificationsQuery,
     ]);
@@ -399,6 +586,33 @@ export default async function PendenciasPage({
     console.error(
       "Erro ao carregar SLA:",
       slaResult.error
+    );
+  }
+
+  if (
+    receiptItemsResult.error
+  ) {
+    console.error(
+      "Erro ao carregar itens para confirmação de recebimento:",
+      receiptItemsResult.error
+    );
+  }
+
+  if (
+    confirmationsResult.error
+  ) {
+    console.error(
+      "Erro ao carregar confirmações de recebimento:",
+      confirmationsResult.error
+    );
+  }
+
+  if (
+    requestSummariesResult.error
+  ) {
+    console.error(
+      "Erro ao carregar request keys:",
+      requestSummariesResult.error
     );
   }
 
@@ -430,6 +644,24 @@ export default async function PendenciasPage({
       []
     ) as SlaRow[];
 
+  const receiptItems =
+    (
+      receiptItemsResult.data ??
+      []
+    ) as ReceiptItemRow[];
+
+  const confirmations =
+    (
+      confirmationsResult.data ??
+      []
+    ) as DeliveryConfirmationRow[];
+
+  const requestSummaries =
+    (
+      requestSummariesResult.data ??
+      []
+    ) as RequestSummaryRow[];
+
   const siengeUsers =
     (
       siengeUsersResult.data ??
@@ -441,6 +673,14 @@ export default async function PendenciasPage({
       notificationsResult.data ??
       []
     ) as NotificationRow[];
+
+  // =========================================================
+  // NÃO GERAR FALSO POSITIVO DE RECEBIMENTO
+  // =========================================================
+
+  const canCalculateReceipts =
+    !receiptItemsResult.error &&
+    !confirmationsResult.error;
 
   // =========================================================
   // RESUMO CENTRALIZADO
@@ -455,12 +695,22 @@ export default async function PendenciasPage({
 
         notifications,
 
+        receiptItems:
+          canCalculateReceipts
+            ? receiptItems
+            : [],
+
+        deliveryConfirmations:
+          canCalculateReceipts
+            ? confirmations
+            : [],
+
         canFinance,
       }
     );
 
   // =========================================================
-  // MAPAS
+  // MAPAS SLA
   // =========================================================
 
   const overdueBySc =
@@ -531,6 +781,50 @@ export default async function PendenciasPage({
         }
       )
     );
+
+  // =========================================================
+  // CONFIRMAÇÃO POR ITEM
+  // =========================================================
+
+  const confirmationByItem =
+    new Map<
+      string,
+      DeliveryConfirmationRow
+    >();
+
+  for (
+    const confirmation
+    of confirmations
+  ) {
+    confirmationByItem.set(
+      String(
+        confirmation.item_id
+      ),
+      confirmation
+    );
+  }
+
+  // =========================================================
+  // REQUEST KEY POR AGRUPAMENTO
+  // =========================================================
+
+  const requestKeyByGroup =
+    new Map<
+      string,
+      string
+    >();
+
+  for (
+    const request
+    of requestSummaries
+  ) {
+    requestKeyByGroup.set(
+      createRequestGroupKey(
+        request
+      ),
+      request.request_key
+    );
+  }
 
   // =========================================================
   // USUÁRIOS SEM VÍNCULO
@@ -701,8 +995,7 @@ export default async function PendenciasPage({
             value:
               formatElapsedTime(
                 row.elapsed_hours
-              ) ??
-              "Não informado",
+              ),
           },
 
           {
@@ -846,8 +1139,7 @@ export default async function PendenciasPage({
             value:
               formatElapsedTime(
                 row.elapsed_hours
-              ) ??
-              "Não informado",
+              ),
           },
         ],
       }
@@ -1002,6 +1294,327 @@ export default async function PendenciasPage({
         ],
       }
     );
+  }
+
+  // =========================================================
+  // RECEBIMENTO PENDENTE
+  // =========================================================
+
+  if (
+    canCalculateReceipts
+  ) {
+    for (
+      const item
+      of receiptItems
+    ) {
+      // =====================================================
+      // SEM PEDIDO
+      // =====================================================
+
+      if (
+        !item.order_number
+      ) {
+        continue;
+      }
+
+      const confirmation =
+        confirmationByItem.get(
+          String(
+            item.id
+          )
+        );
+
+      // =====================================================
+      // JÁ ENTREGUE PELO SOLICITANTE
+      // =====================================================
+
+      if (
+        confirmation
+          ?.delivery_status ===
+        "Entregue"
+      ) {
+        continue;
+      }
+
+      const forecastValue =
+        item
+          .delivery_or_pickup_forecast ??
+        item
+          .initial_delivery_forecast;
+
+      const forecast =
+        forecastValue
+          ? extractIsoDate(
+              forecastValue
+            )
+          : null;
+
+      let priority:
+        | "critical"
+        | "warning"
+        | null =
+        null;
+
+      let value:
+        | string
+        | null =
+        null;
+
+      let urgency =
+        0;
+
+      // =====================================================
+      // PREVISÃO VENCIDA
+      // =====================================================
+
+      if (
+        forecast &&
+        forecast <
+          today
+      ) {
+        priority =
+          "critical";
+
+        const delayDays =
+          getDelayDays(
+            forecast,
+            today
+          );
+
+        urgency =
+          delayDays *
+            24 +
+          500;
+
+        value =
+          delayDays ===
+          1
+            ? "1 dia"
+            : `${delayDays} dias`;
+      }
+
+      // =====================================================
+      // PREVISÃO PARA HOJE
+      // =====================================================
+
+      else if (
+        forecast ===
+        today
+      ) {
+        priority =
+          "warning";
+
+        urgency =
+          200;
+
+        value =
+          "Hoje";
+      }
+
+      // =====================================================
+      // SIENGE DIZ ENTREGUE, MAS SOLICITANTE NÃO CONFIRMOU
+      // =====================================================
+
+      else if (
+        item.delivery_status ===
+        "Entregue"
+      ) {
+        priority =
+          "warning";
+
+        urgency =
+          150;
+
+        value =
+          "Confirmar";
+      }
+
+      // =====================================================
+      // AINDA NÃO É PENDÊNCIA
+      // =====================================================
+
+      if (
+        !priority
+      ) {
+        continue;
+      }
+
+      const sc =
+        item.sc_number ??
+        "—";
+
+      const requestKey =
+        requestKeyByGroup.get(
+          createRequestGroupKey(
+            item
+          )
+        ) ??
+        null;
+
+      const href =
+        getReceiptHref({
+          canFinance,
+          sc,
+          requestKey,
+        });
+
+      entries.push(
+        {
+          id:
+            `receipt-${item.id}`,
+
+          type:
+            "recebimento",
+
+          priority,
+
+          icon:
+            "receipt",
+
+          title:
+            `SC ${sc} aguardando confirmação de recebimento`,
+
+          description:
+            item.insumo ??
+            "O solicitante ainda não confirmou o recebimento deste item.",
+
+          meta:
+            item
+              .requester_sienge_username,
+
+          secondary:
+            item.order_number
+              ? `Pedido ${item.order_number}`
+              : item
+                  .supplier_name,
+
+          value,
+
+          href,
+
+          actionLabel:
+            canFinance
+              ? "Acompanhar pedido"
+              : "Atualizar recebimento",
+
+          searchText:
+            normalizeSearch(
+              [
+                sc,
+                item.insumo,
+                item
+                  .requester_sienge_username,
+                item
+                  .cost_center_or_site,
+                item
+                  .order_number,
+                item
+                  .supplier_name,
+                item
+                  .delivery_status,
+                confirmation
+                  ?.delivery_status,
+                "recebimento",
+                "confirmação",
+              ]
+                .filter(
+                  Boolean
+                )
+                .join(
+                  " "
+                )
+            ),
+
+          urgency,
+
+          createdAt:
+            confirmation
+              ?.updated_at ??
+            null,
+
+          details: [
+            {
+              label:
+                "SC",
+
+              value:
+                sc,
+            },
+
+            {
+              label:
+                "Pedido",
+
+              value:
+                item
+                  .order_number ??
+                "Não informado",
+            },
+
+            {
+              label:
+                "Solicitante",
+
+              value:
+                item
+                  .requester_sienge_username ??
+                "Não informado",
+            },
+
+            {
+              label:
+                "Item",
+
+              value:
+                item.insumo ??
+                "Não informado",
+            },
+
+            {
+              label:
+                "Fornecedor",
+
+              value:
+                item
+                  .supplier_name ??
+                "Não informado",
+            },
+
+            {
+              label:
+                "Previsão",
+
+              value:
+                forecastValue
+                  ? formatDate(
+                      forecastValue
+                    )
+                  : "Não informada",
+            },
+
+            {
+              label:
+                "Status no Sienge",
+
+              value:
+                item
+                  .delivery_status ??
+                "Não informado",
+            },
+
+            {
+              label:
+                "Confirmação do solicitante",
+
+              value:
+                confirmation
+                  ?.delivery_status ??
+                "Ainda não confirmada",
+            },
+          ],
+        }
+      );
+    }
   }
 
   // =========================================================
@@ -1349,7 +1962,66 @@ function createScMap(
 }
 
 // ============================================================
-// HREF
+// AGRUPAMENTO DO REQUEST KEY
+// ============================================================
+
+function createRequestGroupKey(
+  row: {
+    sc_number:
+      | string
+      | null;
+
+    requester_profile_id:
+      | string
+      | null;
+
+    requester_sienge_username?:
+      | string
+      | null;
+
+    cost_center_or_site:
+      | string
+      | null;
+  }
+) {
+  const requester =
+    row.requester_profile_id ??
+    row.requester_sienge_username ??
+    "";
+
+  return [
+    normalizeKey(
+      row.sc_number
+    ),
+
+    normalizeKey(
+      requester
+    ),
+
+    normalizeKey(
+      row.cost_center_or_site
+    ),
+  ].join(
+    "::"
+  );
+}
+
+function normalizeKey(
+  value:
+    | string
+    | null
+    | undefined
+) {
+  return String(
+    value ??
+    ""
+  )
+    .trim()
+    .toUpperCase();
+}
+
+// ============================================================
+// HREF PADRÃO
 // ============================================================
 
 function getRequestHref(
@@ -1364,6 +2036,44 @@ function getRequestHref(
   return canFinance
     ? `/financeiro/sienge?tab=pedidos&q=${encoded}`
     : `/meus-pedidos?q=${encoded}`;
+}
+
+// ============================================================
+// HREF RECEBIMENTO
+// ============================================================
+
+function getReceiptHref({
+  canFinance,
+  sc,
+  requestKey,
+}: {
+  canFinance: boolean;
+
+  sc: string;
+
+  requestKey:
+    | string
+    | null;
+}) {
+  if (
+    canFinance
+  ) {
+    return `/financeiro/sienge?tab=pedidos&q=${encodeURIComponent(
+      sc
+    )}`;
+  }
+
+  if (
+    requestKey
+  ) {
+    return `/meus-pedidos/${encodeURIComponent(
+      requestKey
+    )}`;
+  }
+
+  return `/meus-pedidos?q=${encodeURIComponent(
+    sc
+  )}`;
 }
 
 // ============================================================
@@ -1411,7 +2121,7 @@ function normalizeSearch(
 }
 
 // ============================================================
-// DATE BUSINESS RULE
+// DATA DE NEGÓCIO
 // ============================================================
 
 function getTodayIsoDate() {
@@ -1562,7 +2272,7 @@ function formatDateTime(
 }
 
 // ============================================================
-// DELAY
+// ATRASO
 // ============================================================
 
 function getDelayDays(

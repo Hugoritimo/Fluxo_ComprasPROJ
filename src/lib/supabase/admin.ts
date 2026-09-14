@@ -1,6 +1,4 @@
-import {
-    createClient,
-} from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 export function createAdminClient() {
     const supabaseUrl =

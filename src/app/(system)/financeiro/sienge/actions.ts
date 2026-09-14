@@ -11,6 +11,10 @@ import {
 } from "next/cache";
 
 import {
+    createAdminClient,
+} from "@/lib/supabase/admin";
+
+import {
     createClient,
 } from "@/lib/supabase/server";
 
@@ -151,6 +155,20 @@ export type SiengePreviewResult = {
     | null;
 };
 
+export type SiengeReconciliationSummary = {
+    checked: number;
+
+    linked: number;
+
+    pending: number;
+
+    conflicts: number;
+
+    error:
+    | string
+    | null;
+};
+
 export type SiengeImportResult = {
     success: boolean;
 
@@ -171,7 +189,72 @@ export type SiengeImportResult = {
         unchanged: number;
 
         unmatchedUsers: number;
+
+        reconciliation:
+        SiengeReconciliationSummary;
     }
+    | null;
+};
+
+type CardRequestRow = {
+    id: string;
+
+    requester_id:
+    | string
+    | null;
+
+    sienge_request_number:
+    | string
+    | null;
+};
+
+type CardSiengeLinkRow = {
+    id: string;
+
+    card_request_id: string;
+
+    sienge_request_number: string;
+
+    sienge_request_key:
+    | string
+    | null;
+
+    link_status: string;
+
+    conflict_reason:
+    | string
+    | null;
+
+    sienge_requester_profile_id:
+    | string
+    | null;
+
+    sienge_requester_username:
+    | string
+    | null;
+
+    sienge_cost_center_or_site:
+    | string
+    | null;
+};
+
+type SiengeSummaryRow = {
+    request_key: string;
+
+    sc_number:
+    | string
+    | null;
+
+    requester_profile_id:
+    | string
+    | null;
+
+    requester_sienge_username:
+    | string
+    | null;
+
+    cost_center_or_site:
+    | string
     | null;
 };
 
@@ -219,7 +302,9 @@ export async function previewSiengeFile(
                         (
                             value
                         ): value is string =>
-                            Boolean(value)
+                            Boolean(
+                                value
+                            )
                     )
             ),
         ];
@@ -391,12 +476,15 @@ export async function importSiengeFile(
             await createClient();
 
         // ========================================================
-        // CRIA LOTE
+        // CRIAR LOTE
         // ========================================================
 
         const {
-            data: batch,
-            error: batchError,
+            data:
+            batch,
+
+            error:
+            batchError,
         } =
             await supabase
                 .from(
@@ -426,7 +514,8 @@ export async function importSiengeFile(
                             parsed.sheetName,
 
                         imported_at:
-                            new Date().toISOString(),
+                            new Date()
+                                .toISOString(),
                     },
                 })
                 .select(
@@ -445,9 +534,11 @@ export async function importSiengeFile(
 
             return {
                 success: false,
+
                 error:
                     batchError?.message ??
                     "Não foi possível iniciar a importação.",
+
                 result: null,
             };
         }
@@ -456,7 +547,7 @@ export async function importSiengeFile(
             batch.id;
 
         // ========================================================
-        // IMPORTA
+        // IMPORTAR MÁSCARA
         // ========================================================
 
         const {
@@ -494,7 +585,8 @@ export async function importSiengeFile(
                     },
 
                     completed_at:
-                        new Date().toISOString(),
+                        new Date()
+                            .toISOString(),
                 })
                 .eq(
                     "id",
@@ -503,8 +595,10 @@ export async function importSiengeFile(
 
             return {
                 success: false,
+
                 error:
                     error.message,
+
                 result: null,
             };
         }
@@ -512,18 +606,79 @@ export async function importSiengeFile(
         const result =
             data as {
                 total?: number;
+
                 inserted?: number;
+
                 updated?: number;
+
                 unchanged?: number;
+
                 unmatched_users?: number;
             };
+
+        // ========================================================
+        // CONCILIAÇÃO AUTOMÁTICA
+        //
+        // A importação principal já terminou.
+        //
+        // Se a conciliação apresentar problema, NÃO desfazemos
+        // nem marcamos como falha a importação do Sienge.
+        // ========================================================
+
+        let reconciliation:
+            SiengeReconciliationSummary = {
+            checked: 0,
+            linked: 0,
+            pending: 0,
+            conflicts: 0,
+            error: null,
+        };
+
+        try {
+            reconciliation =
+                await reconcileCardSiengeLinks(
+                    permission.userId
+                );
+        } catch (
+        reconciliationError
+        ) {
+            console.error(
+                "Erro na conciliação Cartão x Sienge:",
+                reconciliationError
+            );
+
+            reconciliation = {
+                checked: 0,
+                linked: 0,
+                pending: 0,
+                conflicts: 0,
+
+                error:
+                    getErrorMessage(
+                        reconciliationError,
+                        "A máscara foi importada, mas a conciliação de cartões não pôde ser concluída."
+                    ),
+            };
+        }
+
+        // ========================================================
+        // REVALIDAÇÃO
+        // ========================================================
 
         revalidatePath(
             "/financeiro/sienge"
         );
 
         revalidatePath(
+            "/financeiro/solicitacoes"
+        );
+
+        revalidatePath(
             "/meus-pedidos"
+        );
+
+        revalidatePath(
+            "/pendencias"
         );
 
         return {
@@ -564,6 +719,8 @@ export async function importSiengeFile(
                         result.unmatched_users ??
                         0
                     ),
+
+                reconciliation,
             },
         };
     } catch (error) {
@@ -572,7 +729,9 @@ export async function importSiengeFile(
             error
         );
 
-        if (batchId) {
+        if (
+            batchId
+        ) {
             try {
                 const supabase =
                     await createClient();
@@ -594,7 +753,8 @@ export async function importSiengeFile(
                         },
 
                         completed_at:
-                            new Date().toISOString(),
+                            new Date()
+                                .toISOString(),
                     })
                     .eq(
                         "id",
@@ -621,6 +781,969 @@ export async function importSiengeFile(
 }
 
 // ============================================================
+// CONCILIAÇÃO CARTÃO x SIENGE
+//
+// ETAPAS:
+//
+// 1. Procura solicitações de cartão com Nº Sienge.
+// 2. Garante que exista card_sienge_links.
+// 3. Procura a SC importada.
+// 4. Confere o solicitante.
+// 5. Vincula automaticamente quando não há ambiguidade.
+// ============================================================
+
+async function reconcileCardSiengeLinks(
+    performedBy:
+        string
+): Promise<SiengeReconciliationSummary> {
+    const admin =
+        createAdminClient();
+
+    const now =
+        new Date()
+            .toISOString();
+
+    // ========================================================
+    // SOLICITAÇÕES DE CARTÃO COM NÚMERO SIENGE
+    //
+    // Essa sincronização também pega solicitações criadas
+    // depois do backfill inicial da migration.
+    // ========================================================
+
+    const {
+        data:
+        cardRequestsData,
+
+        error:
+        cardRequestsError,
+    } =
+        await admin
+            .from(
+                "card_requests"
+            )
+            .select(
+                `
+                id,
+                requester_id,
+                sienge_request_number
+                `
+            )
+            .not(
+                "sienge_request_number",
+                "is",
+                null
+            );
+
+    if (
+        cardRequestsError
+    ) {
+        throw new Error(
+            cardRequestsError.message
+        );
+    }
+
+    const cardRequests =
+        (
+            cardRequestsData ??
+            []
+        ) as CardRequestRow[];
+
+    const validCardRequests =
+        cardRequests.filter(
+            (
+                request
+            ) =>
+                Boolean(
+                    normalizeSiengeNumber(
+                        request.sienge_request_number
+                    )
+                )
+        );
+
+    if (
+        validCardRequests.length ===
+        0
+    ) {
+        return {
+            checked: 0,
+            linked: 0,
+            pending: 0,
+            conflicts: 0,
+            error: null,
+        };
+    }
+
+    // ========================================================
+    // VÍNCULOS EXISTENTES
+    // ========================================================
+
+    const cardRequestIds =
+        validCardRequests.map(
+            (
+                request
+            ) =>
+                request.id
+        );
+
+    const {
+        data:
+        existingLinksData,
+
+        error:
+        existingLinksError,
+    } =
+        await admin
+            .from(
+                "card_sienge_links"
+            )
+            .select(
+                `
+                id,
+                card_request_id,
+                sienge_request_number,
+                sienge_request_key,
+                link_status,
+                conflict_reason,
+                sienge_requester_profile_id,
+                sienge_requester_username,
+                sienge_cost_center_or_site
+                `
+            )
+            .in(
+                "card_request_id",
+                cardRequestIds
+            );
+
+    if (
+        existingLinksError
+    ) {
+        throw new Error(
+            existingLinksError.message
+        );
+    }
+
+    const existingLinks =
+        (
+            existingLinksData ??
+            []
+        ) as CardSiengeLinkRow[];
+
+    const linkByCardRequest =
+        new Map<
+            string,
+            CardSiengeLinkRow
+        >();
+
+    for (
+        const link
+        of existingLinks
+    ) {
+        linkByCardRequest.set(
+            link.card_request_id,
+            link
+        );
+    }
+
+    // ========================================================
+    // CRIAR VÍNCULOS QUE AINDA NÃO EXISTEM
+    //
+    // Se o Nº Sienge tiver sido alterado posteriormente,
+    // reiniciamos a conciliação.
+    // ========================================================
+
+    const linksToInsert:
+        {
+            card_request_id: string;
+
+            sienge_request_number: string;
+
+            link_status: string;
+        }[] =
+        [];
+
+    for (
+        const request
+        of validCardRequests
+    ) {
+        const siengeNumber =
+            normalizeSiengeNumber(
+                request.sienge_request_number
+            );
+
+        if (
+            !siengeNumber
+        ) {
+            continue;
+        }
+
+        const existing =
+            linkByCardRequest.get(
+                request.id
+            );
+
+        if (
+            !existing
+        ) {
+            linksToInsert.push({
+                card_request_id:
+                    request.id,
+
+                sienge_request_number:
+                    siengeNumber,
+
+                link_status:
+                    "pending",
+            });
+
+            continue;
+        }
+
+        const existingNumber =
+            normalizeSiengeNumber(
+                existing.sienge_request_number
+            );
+
+        if (
+            existingNumber !==
+            siengeNumber
+        ) {
+            const {
+                error:
+                resetError,
+            } =
+                await admin
+                    .from(
+                        "card_sienge_links"
+                    )
+                    .update({
+                        sienge_request_number:
+                            siengeNumber,
+
+                        sienge_request_key:
+                            null,
+
+                        link_status:
+                            "pending",
+
+                        conflict_reason:
+                            null,
+
+                        sienge_requester_profile_id:
+                            null,
+
+                        sienge_requester_username:
+                            null,
+
+                        sienge_cost_center_or_site:
+                            null,
+
+                        linked_at:
+                            null,
+
+                        linked_by:
+                            null,
+
+                        last_checked_at:
+                            null,
+                    })
+                    .eq(
+                        "id",
+                        existing.id
+                    );
+
+            if (
+                resetError
+            ) {
+                throw new Error(
+                    resetError.message
+                );
+            }
+        }
+    }
+
+    if (
+        linksToInsert.length >
+        0
+    ) {
+        const {
+            error:
+            insertLinksError,
+        } =
+            await admin
+                .from(
+                    "card_sienge_links"
+                )
+                .insert(
+                    linksToInsert
+                );
+
+        if (
+            insertLinksError
+        ) {
+            throw new Error(
+                insertLinksError.message
+            );
+        }
+    }
+
+    // ========================================================
+    // RECARGAR VÍNCULOS
+    //
+    // Reavaliamos também not_found e conflict.
+    //
+    // Isso é importante caso:
+    // - a SC seja importada depois;
+    // - o mapeamento de usuário seja corrigido depois.
+    // ========================================================
+
+    const {
+        data:
+        linksData,
+
+        error:
+        linksError,
+    } =
+        await admin
+            .from(
+                "card_sienge_links"
+            )
+            .select(
+                `
+                id,
+                card_request_id,
+                sienge_request_number,
+                sienge_request_key,
+                link_status,
+                conflict_reason,
+                sienge_requester_profile_id,
+                sienge_requester_username,
+                sienge_cost_center_or_site
+                `
+            )
+            .in(
+                "card_request_id",
+                cardRequestIds
+            )
+            .in(
+                "link_status",
+                [
+                    "pending",
+                    "not_found",
+                    "conflict",
+                ]
+            );
+
+    if (
+        linksError
+    ) {
+        throw new Error(
+            linksError.message
+        );
+    }
+
+    const links =
+        (
+            linksData ??
+            []
+        ) as CardSiengeLinkRow[];
+
+    if (
+        links.length ===
+        0
+    ) {
+        return {
+            checked: 0,
+            linked: 0,
+            pending: 0,
+            conflicts: 0,
+            error: null,
+        };
+    }
+
+    // ========================================================
+    // MAPA DAS SOLICITAÇÕES DE CARTÃO
+    // ========================================================
+
+    const cardRequestById =
+        new Map<
+            string,
+            CardRequestRow
+        >();
+
+    for (
+        const request
+        of validCardRequests
+    ) {
+        cardRequestById.set(
+            request.id,
+            request
+        );
+    }
+
+    // ========================================================
+    // RESUMOS DO SIENGE
+    //
+    // Buscamos todos e normalizamos em memória para evitar
+    // problemas como:
+    //
+    // "SC 105842"
+    // "105842"
+    // " 105842 "
+    // ========================================================
+
+    const {
+        data:
+        summariesData,
+
+        error:
+        summariesError,
+    } =
+        await admin
+            .from(
+                "v_sienge_request_summary"
+            )
+            .select(
+                `
+                request_key,
+                sc_number,
+                requester_profile_id,
+                requester_sienge_username,
+                cost_center_or_site
+                `
+            );
+
+    if (
+        summariesError
+    ) {
+        throw new Error(
+            summariesError.message
+        );
+    }
+
+    const summaries =
+        (
+            summariesData ??
+            []
+        ) as SiengeSummaryRow[];
+
+    const summariesBySc =
+        new Map<
+            string,
+            SiengeSummaryRow[]
+        >();
+
+    for (
+        const summary
+        of summaries
+    ) {
+        const number =
+            normalizeSiengeNumber(
+                summary.sc_number
+            );
+
+        if (
+            !number
+        ) {
+            continue;
+        }
+
+        const current =
+            summariesBySc.get(
+                number
+            ) ??
+            [];
+
+        current.push(
+            summary
+        );
+
+        summariesBySc.set(
+            number,
+            current
+        );
+    }
+
+    // ========================================================
+    // CONTADORES
+    // ========================================================
+
+    let linked =
+        0;
+
+    let pending =
+        0;
+
+    let conflicts =
+        0;
+
+    // ========================================================
+    // CONCILIAR CADA VÍNCULO
+    // ========================================================
+
+    for (
+        const link
+        of links
+    ) {
+        const cardRequest =
+            cardRequestById.get(
+                link.card_request_id
+            );
+
+        if (
+            !cardRequest
+        ) {
+            continue;
+        }
+
+        const siengeNumber =
+            normalizeSiengeNumber(
+                link.sienge_request_number
+            );
+
+        const candidates =
+            siengeNumber
+                ? summariesBySc.get(
+                    siengeNumber
+                ) ??
+                []
+                : [];
+
+        // ====================================================
+        // NÃO ENCONTRADO
+        // ====================================================
+
+        if (
+            candidates.length ===
+            0
+        ) {
+            const {
+                error:
+                notFoundError,
+            } =
+                await admin
+                    .from(
+                        "card_sienge_links"
+                    )
+                    .update({
+                        link_status:
+                            "not_found",
+
+                        sienge_request_key:
+                            null,
+
+                        conflict_reason:
+                            null,
+
+                        sienge_requester_profile_id:
+                            null,
+
+                        sienge_requester_username:
+                            null,
+
+                        sienge_cost_center_or_site:
+                            null,
+
+                        last_checked_at:
+                            now,
+                    })
+                    .eq(
+                        "id",
+                        link.id
+                    );
+
+            if (
+                notFoundError
+            ) {
+                console.error(
+                    "Erro ao marcar conciliação como não encontrada:",
+                    notFoundError
+                );
+
+                conflicts++;
+
+                continue;
+            }
+
+            pending++;
+
+            continue;
+        }
+
+        // ====================================================
+        // VALIDAR SOLICITANTE DO CARTÃO
+        // ====================================================
+
+        if (
+            !cardRequest.requester_id
+        ) {
+            await markLinkConflict({
+                linkId:
+                    link.id,
+
+                reason:
+                    "A solicitação de cartão não possui solicitante vinculado.",
+
+                checkedAt:
+                    now,
+            });
+
+            conflicts++;
+
+            continue;
+        }
+
+        // ====================================================
+        // PROCURAR CANDIDATO DO MESMO SOLICITANTE
+        // ====================================================
+
+        const requesterMatches =
+            candidates.filter(
+                (
+                    candidate
+                ) =>
+                    candidate.requester_profile_id ===
+                    cardRequest.requester_id
+            );
+
+        let selected:
+            | SiengeSummaryRow
+            | null =
+            null;
+
+        // ====================================================
+        // UM ÚNICO REGISTRO DA SC
+        // ====================================================
+
+        if (
+            candidates.length ===
+            1
+        ) {
+            const candidate =
+                candidates[0];
+
+            if (
+                !candidate
+                    .requester_profile_id
+            ) {
+                await markLinkConflict({
+                    linkId:
+                        link.id,
+
+                    reason:
+                        "A SC foi encontrada, mas o solicitante do Sienge ainda não está vinculado a um usuário do Projeta Compras.",
+
+                    checkedAt:
+                        now,
+
+                    candidate,
+                });
+
+                conflicts++;
+
+                continue;
+            }
+
+            if (
+                candidate
+                    .requester_profile_id !==
+                cardRequest.requester_id
+            ) {
+                await markLinkConflict({
+                    linkId:
+                        link.id,
+
+                    reason:
+                        "A SC foi encontrada, porém o solicitante do Sienge é diferente do solicitante da requisição de cartão.",
+
+                    checkedAt:
+                        now,
+
+                    candidate,
+                });
+
+                conflicts++;
+
+                continue;
+            }
+
+            selected =
+                candidate;
+        }
+
+        // ====================================================
+        // A MESMA SC POSSUI MAIS DE UM AGRUPAMENTO
+        // ====================================================
+
+        if (
+            candidates.length >
+            1
+        ) {
+            if (
+                requesterMatches.length ===
+                1
+            ) {
+                selected =
+                    requesterMatches[0] ??
+                    null;
+            } else if (
+                requesterMatches.length >
+                1
+            ) {
+                await markLinkConflict({
+                    linkId:
+                        link.id,
+
+                    reason:
+                        "A SC possui mais de um agrupamento para o mesmo solicitante. O Financeiro precisa revisar qual solicitação deve ser vinculada.",
+
+                    checkedAt:
+                        now,
+                });
+
+                conflicts++;
+
+                continue;
+            } else {
+                const hasUnmappedRequester =
+                    candidates.some(
+                        (
+                            candidate
+                        ) =>
+                            !candidate
+                                .requester_profile_id
+                    );
+
+                await markLinkConflict({
+                    linkId:
+                        link.id,
+
+                    reason:
+                        hasUnmappedRequester
+                            ? "A SC foi encontrada, mas não foi possível validar o solicitante porque existem usuários do Sienge ainda sem vínculo."
+                            : "A SC foi encontrada, mas nenhum dos registros pertence ao mesmo solicitante da requisição de cartão.",
+
+                    checkedAt:
+                        now,
+                });
+
+                conflicts++;
+
+                continue;
+            }
+        }
+
+        if (
+            !selected
+        ) {
+            await markLinkConflict({
+                linkId:
+                    link.id,
+
+                reason:
+                    "Não foi possível determinar de forma segura qual solicitação do Sienge deve ser vinculada.",
+
+                checkedAt:
+                    now,
+            });
+
+            conflicts++;
+
+            continue;
+        }
+
+        // ====================================================
+        // VÍNCULO CONFIRMADO
+        // ====================================================
+
+        const {
+            error:
+            linkedError,
+        } =
+            await admin
+                .from(
+                    "card_sienge_links"
+                )
+                .update({
+                    sienge_request_number:
+                        siengeNumber,
+
+                    sienge_request_key:
+                        selected.request_key,
+
+                    link_status:
+                        "linked",
+
+                    conflict_reason:
+                        null,
+
+                    sienge_requester_profile_id:
+                        selected
+                            .requester_profile_id,
+
+                    sienge_requester_username:
+                        selected
+                            .requester_sienge_username,
+
+                    sienge_cost_center_or_site:
+                        selected
+                            .cost_center_or_site,
+
+                    last_checked_at:
+                        now,
+
+                    linked_at:
+                        now,
+
+                    linked_by:
+                        performedBy,
+                })
+                .eq(
+                    "id",
+                    link.id
+                );
+
+        if (
+            linkedError
+        ) {
+            console.error(
+                "Erro ao confirmar vínculo Cartão x Sienge:",
+                linkedError
+            );
+
+            conflicts++;
+
+            continue;
+        }
+
+        linked++;
+    }
+
+    return {
+        checked:
+            links.length,
+
+        linked,
+
+        pending,
+
+        conflicts,
+
+        error:
+            null,
+    };
+}
+
+// ============================================================
+// MARCAR CONFLITO
+// ============================================================
+
+async function markLinkConflict({
+    linkId,
+    reason,
+    checkedAt,
+    candidate,
+}: {
+    linkId: string;
+
+    reason: string;
+
+    checkedAt: string;
+
+    candidate?:
+    | SiengeSummaryRow
+    | null;
+}) {
+    const admin =
+        createAdminClient();
+
+    const {
+        error,
+    } =
+        await admin
+            .from(
+                "card_sienge_links"
+            )
+            .update({
+                link_status:
+                    "conflict",
+
+                conflict_reason:
+                    reason,
+
+                sienge_request_key:
+                    candidate
+                        ?.request_key ??
+                    null,
+
+                sienge_requester_profile_id:
+                    candidate
+                        ?.requester_profile_id ??
+                    null,
+
+                sienge_requester_username:
+                    candidate
+                        ?.requester_sienge_username ??
+                    null,
+
+                sienge_cost_center_or_site:
+                    candidate
+                        ?.cost_center_or_site ??
+                    null,
+
+                last_checked_at:
+                    checkedAt,
+
+                linked_at:
+                    null,
+
+                linked_by:
+                    null,
+            })
+            .eq(
+                "id",
+                linkId
+            );
+
+    if (
+        error
+    ) {
+        console.error(
+            "Erro ao registrar conflito de conciliação:",
+            error
+        );
+    }
+}
+
+// ============================================================
+// NORMALIZAR Nº SIENGE
+// ============================================================
+
+function normalizeSiengeNumber(
+    value:
+        | string
+        | null
+        | undefined
+) {
+    const normalized =
+        String(
+            value ??
+            ""
+        )
+            .trim()
+            .replace(
+                /^SC[\s:#-]*/i,
+                ""
+            )
+            .replace(
+                /\s+/g,
+                ""
+            )
+            .toUpperCase();
+
+    return normalized;
+}
+
+// ============================================================
 // PERMISSÕES
 // ============================================================
 
@@ -640,24 +1763,33 @@ async function validateFinanceAccess(): Promise<
         await createClient();
 
     const {
-        data: claimsData,
+        data:
+        claimsData,
     } =
         await supabase.auth.getClaims();
 
     const userId =
-        claimsData?.claims?.sub;
+        claimsData
+            ?.claims
+            ?.sub;
 
-    if (!userId) {
+    if (
+        !userId
+    ) {
         return {
             success: false,
+
             userId: null,
+
             error:
                 "Usuário não autenticado.",
         };
     }
 
     const {
-        data: roleRows,
+        data:
+        roleRows,
+
         error,
     } =
         await supabase
@@ -672,10 +1804,14 @@ async function validateFinanceAccess(): Promise<
                 userId
             );
 
-    if (error) {
+    if (
+        error
+    ) {
         return {
             success: false,
+
             userId: null,
+
             error:
                 "Não foi possível verificar suas permissões.",
         };
@@ -686,7 +1822,9 @@ async function validateFinanceAccess(): Promise<
             roleRows ??
             []
         ).map(
-            (item) =>
+            (
+                item
+            ) =>
                 item.role
         );
 
@@ -701,10 +1839,14 @@ async function validateFinanceAccess(): Promise<
             "superadmin"
         );
 
-    if (!canAccess) {
+    if (
+        !canAccess
+    ) {
         return {
             success: false,
+
             userId: null,
+
             error:
                 "Você não possui permissão para importar dados do Sienge.",
         };
@@ -712,7 +1854,9 @@ async function validateFinanceAccess(): Promise<
 
     return {
         success: true,
+
         userId,
+
         error: null,
     };
 }
@@ -722,7 +1866,8 @@ async function validateFinanceAccess(): Promise<
 // ============================================================
 
 function getUploadedFile(
-    formData: FormData
+    formData:
+        FormData
 ) {
     const file =
         formData.get(
@@ -730,7 +1875,10 @@ function getUploadedFile(
         );
 
     if (
-        !(file instanceof File)
+        !(
+            file instanceof
+            File
+        )
     ) {
         throw new Error(
             "Selecione o arquivo Excel do Sienge."
@@ -747,7 +1895,8 @@ function getUploadedFile(
     }
 
     const name =
-        file.name.toLowerCase();
+        file.name
+            .toLowerCase();
 
     if (
         !name.endsWith(
@@ -762,7 +1911,6 @@ function getUploadedFile(
         );
     }
 
-    // 20 MB
     if (
         file.size >
         20 *
@@ -782,29 +1930,11 @@ function getUploadedFile(
 // ============================================================
 
 async function parseSiengeWorkbook(
-    file: File
+    file:
+        File
 ) {
-    // ========================================================
-    // FILE -> ARRAYBUFFER
-    // ========================================================
-
     const arrayBuffer =
         await file.arrayBuffer();
-
-    // ========================================================
-    // ARRAYBUFFER -> BUFFER NODE
-    // ========================================================
-    //
-    // Em runtime o ExcelJS trabalha normalmente com este
-    // Buffer.
-    //
-    // O TypeScript/Node atual, porém, tipa este valor como
-    // Buffer<ArrayBuffer>, enquanto algumas versões do ExcelJS
-    // ainda possuem uma definição de Buffer incompatível.
-    //
-    // Por isso usamos abaixo o tipo exato exigido pelo método
-    // load() da versão instalada do ExcelJS.
-    // ========================================================
 
     const buffer =
         Buffer.from(
@@ -814,26 +1944,15 @@ async function parseSiengeWorkbook(
     const workbook =
         new ExcelJS.Workbook();
 
-    // ========================================================
-    // TIPO DO PARÂMETRO DO EXCELJS
-    // ========================================================
-
     type ExcelLoadInput =
         Parameters<
             typeof workbook.xlsx.load
         >[0];
 
-    // ========================================================
-    // CARREGA O WORKBOOK
-    // ========================================================
-
     await workbook.xlsx.load(
-        buffer as unknown as ExcelLoadInput
+        buffer as unknown as
+        ExcelLoadInput
     );
-
-    // ========================================================
-    // VALIDA PLANILHAS
-    // ========================================================
 
     if (
         workbook.worksheets.length ===
@@ -843,12 +1962,6 @@ async function parseSiengeWorkbook(
             "O Excel não possui nenhuma planilha."
         );
     }
-
-    // ==========================================================
-    // TENTA PRIMEIRO A MÁSCARA DO FINANCEIRO
-    //
-    // Depois tenta qualquer aba compatível.
-    // ==========================================================
 
     const preferredSheets = [
         workbook.getWorksheet(
@@ -875,10 +1988,6 @@ async function parseSiengeWorkbook(
             index
     );
 
-    // ========================================================
-    // PROCURA ABA COMPATÍVEL
-    // ========================================================
-
     for (
         const worksheet
         of preferredSheets
@@ -888,7 +1997,9 @@ async function parseSiengeWorkbook(
                 worksheet
             );
 
-        if (!detected) {
+        if (
+            !detected
+        ) {
             continue;
         }
 
@@ -917,7 +2028,7 @@ async function parseSiengeWorkbook(
 }
 
 // ============================================================
-// DETECTA CABEÇALHO
+// DETECTAR CABEÇALHO
 // ============================================================
 
 function detectHeaderRow(
@@ -964,7 +2075,9 @@ function detectHeaderRow(
                         cell.text
                     );
 
-                if (label) {
+                if (
+                    label
+                ) {
                     headers.push({
                         column,
                         label,
@@ -975,7 +2088,9 @@ function detectHeaderRow(
 
         const labels =
             headers.map(
-                (item) =>
+                (
+                    item
+                ) =>
                     item.label
             );
 
@@ -991,7 +2106,9 @@ function detectHeaderRow(
 
         const hasSc =
             labels.some(
-                (label) =>
+                (
+                    label
+                ) =>
                     label ===
                     "SC" ||
                     label ===
@@ -1014,7 +2131,7 @@ function detectHeaderRow(
 }
 
 // ============================================================
-// NORMALIZA ABA
+// NORMALIZAR ABA
 // ============================================================
 
 function normalizeWorksheet(
@@ -1033,10 +2150,6 @@ function normalizeWorksheet(
     const rows:
         SiengeNormalizedRow[] =
         [];
-
-    // ==========================================================
-    // ÍNDICES
-    // ==========================================================
 
     const insumoColumn =
         findColumn(
@@ -1248,10 +2361,6 @@ function normalizeWorksheet(
         return [];
     }
 
-    // ==========================================================
-    // LINHAS
-    // ==========================================================
-
     for (
         let rowNumber =
             detected.rowNumber +
@@ -1279,8 +2388,6 @@ function normalizeWorksheet(
                 scColumn
             );
 
-        // Linhas completamente vazias
-        // ou decorativas são ignoradas.
         if (
             !insumo &&
             !scNumber
@@ -1288,8 +2395,6 @@ function normalizeWorksheet(
             continue;
         }
 
-        // Para ser um item válido,
-        // precisamos dos dois.
         if (
             !insumo ||
             !scNumber
@@ -1499,14 +2604,6 @@ function normalizeWorksheet(
 
 // ============================================================
 // CHAVE ESTÁVEL
-//
-// Não usamos quantidade na chave.
-//
-// Assim, caso o Financeiro corrija a quantidade posteriormente,
-// o item é atualizado em vez de virar uma nova linha.
-//
-// Quando tivermos ID nativo do item no Sienge, ele substituirá
-// esta chave.
 // ============================================================
 
 function createStableSourceKey({
@@ -1536,7 +2633,9 @@ function createStableSourceKey({
         normalizeSignature(
             unit
         ),
-    ].join("|");
+    ].join(
+        "|"
+    );
 
     return (
         "AUTO:" +
@@ -1571,7 +2670,9 @@ function findColumn(
 
     const found =
         headers.find(
-            (header) =>
+            (
+                header
+            ) =>
                 expected.includes(
                     header.label
                 )
@@ -1598,13 +2699,17 @@ function findAllColumns(
 
     return headers
         .filter(
-            (header) =>
+            (
+                header
+            ) =>
                 expected.includes(
                     header.label
                 )
         )
         .map(
-            (header) =>
+            (
+                header
+            ) =>
                 header.column
         );
 }
@@ -1621,7 +2726,9 @@ function cellString(
         | number
         | null
 ) {
-    if (!column) {
+    if (
+        !column
+    ) {
         return "";
     }
 
@@ -1666,7 +2773,9 @@ function cellNumber(
         | number
         | null
 ) {
-    if (!column) {
+    if (
+        !column
+    ) {
         return null;
     }
 
@@ -1703,7 +2812,9 @@ function cellNumber(
     }
 
     const normalized =
-        String(raw)
+        String(
+            raw
+        )
             .trim()
             .replace(
                 /\s/g,
@@ -1738,7 +2849,9 @@ function cellDate(
         | number
         | null
 ) {
-    if (!column) {
+    if (
+        !column
+    ) {
         return null;
     }
 
@@ -1771,14 +2884,6 @@ function cellDate(
             raw
         );
     }
-
-    // ==========================================================
-    // SERIAL DO EXCEL
-    //
-    // Só consideramos valores plausíveis de data.
-    // Isso evita interpretar números como 95, 102 ou 119
-    // como datas.
-    // ==========================================================
 
     if (
         typeof raw ===
@@ -1817,13 +2922,14 @@ function cellDate(
             raw
         ).trim();
 
-    // dd/mm/yyyy
     const br =
         text.match(
             /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
         );
 
-    if (br) {
+    if (
+        br
+    ) {
         return `${br[3]}-${br[2].padStart(
             2,
             "0"
@@ -1833,13 +2939,14 @@ function cellDate(
         )}`;
     }
 
-    // yyyy-mm-dd
     const iso =
         text.match(
             /^(\d{4})-(\d{2})-(\d{2})/
         );
 
-    if (iso) {
+    if (
+        iso
+    ) {
         return `${iso[1]}-${iso[2]}-${iso[3]}`;
     }
 
@@ -1895,10 +3002,14 @@ function extractCellValue(
     ) {
         return value.richText
             .map(
-                (part) =>
+                (
+                    part
+                ) =>
                     part.text
             )
-            .join("");
+            .join(
+                ""
+            );
     }
 
     return null;
@@ -1938,7 +3049,8 @@ function normalizeHeader(
 }
 
 function normalizeSignature(
-    value: string
+    value:
+        string
 ) {
     return value
         .normalize(
@@ -1957,7 +3069,8 @@ function normalizeSignature(
 }
 
 function normalizeUsername(
-    value: string
+    value:
+        string
 ) {
     return value
         .trim()
@@ -1965,7 +3078,8 @@ function normalizeUsername(
 }
 
 function normalizeNullableUsername(
-    value: string
+    value:
+        string
 ) {
     const normalized =
         normalizeUsername(
@@ -1993,7 +3107,8 @@ function nullableText(
 }
 
 function formatIsoDate(
-    date: Date
+    date:
+        Date
 ) {
     const year =
         date.getFullYear();
@@ -2019,8 +3134,11 @@ function formatIsoDate(
 }
 
 function getErrorMessage(
-    error: unknown,
-    fallback: string
+    error:
+        unknown,
+
+    fallback:
+        string
 ) {
     if (
         error instanceof

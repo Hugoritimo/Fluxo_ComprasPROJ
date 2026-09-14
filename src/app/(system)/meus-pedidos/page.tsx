@@ -1,4 +1,12 @@
-import Link from "next/link";
+import {
+  MotionCard,
+  MotionPage,
+  MotionReveal,
+} from "@/components/ui/motion";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 import {
   ArrowRight,
@@ -9,25 +17,18 @@ import {
   Search,
   ShoppingBag,
   Truck,
+  UserRound,
 } from "lucide-react";
+
+import Link from "next/link";
 
 import {
   redirect,
 } from "next/navigation";
 
-import {
-  createClient,
-} from "@/lib/supabase/server";
-
-import {
-  MotionCard,
-  MotionInteractive,
-  MotionList,
-  MotionListItem,
-  MotionPage,
-  MotionReveal,
-  MotionStatus,
-} from "@/components/ui/motion";
+// ============================================================
+// TIPOS
+// ============================================================
 
 type PageProps = {
   searchParams: Promise<{
@@ -35,6 +36,50 @@ type PageProps = {
     status?: string;
   }>;
 };
+
+type SiengeRequestRow = {
+  request_key: string;
+
+  sc_number:
+    | string
+    | null;
+
+  requester_profile_id:
+    | string
+    | null;
+
+  requester_sienge_username:
+    | string
+    | null;
+
+  cost_center_or_site:
+    | string
+    | null;
+
+  request_date:
+    | string
+    | null;
+
+  items_count:
+    | number
+    | null;
+
+  orders_count:
+    | number
+    | null;
+
+  tracking_status:
+    | string
+    | null;
+
+  next_delivery_forecast:
+    | string
+    | null;
+};
+
+// ============================================================
+// STATUS DO SIENGE
+// ============================================================
 
 const trackingStatuses = [
   "",
@@ -48,23 +93,68 @@ const trackingStatuses = [
   "Entregue",
 ];
 
+// ============================================================
+// HELPERS
+// ============================================================
+
 function formatDate(
   value:
     | string
     | null
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat(
-    "pt-BR"
-  ).format(
-    new Date(
-      `${value}T12:00:00`
-    )
-  );
+  const iso =
+    value.match(
+      /^\d{4}-\d{2}-\d{2}/
+    )?.[0];
+
+  if (
+    !iso
+  ) {
+    return "-";
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] =
+    iso.split(
+      "-"
+    );
+
+  return `${day}/${month}/${year}`;
 }
+
+function normalizeSearch(
+  value:
+    | string
+    | null
+    | undefined
+) {
+  return String(
+    value ??
+    ""
+  )
+    .normalize(
+      "NFD"
+    )
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .toLowerCase()
+    .trim();
+}
+
+// ============================================================
+// PAGE
+// ============================================================
 
 export default async function MyOrdersPage({
   searchParams,
@@ -75,74 +165,167 @@ export default async function MyOrdersPage({
   const supabase =
     await createClient();
 
+  // =========================================================
+  // AUTENTICAÇÃO
+  // =========================================================
+
   const {
-    data: claimsData,
+    data:
+      claimsData,
+
+    error:
+      claimsError,
   } =
     await supabase.auth.getClaims();
 
   const userId =
-    claimsData?.claims?.sub;
+    claimsData
+      ?.claims
+      ?.sub;
 
-  if (!userId) {
+  if (
+    claimsError ||
+    !userId
+  ) {
     redirect(
       "/login"
     );
   }
 
-  const search =
-    params.q?.trim() ??
-    "";
+  // =========================================================
+  // ROLES
+  // =========================================================
 
-  const status =
-    params.status?.trim() ??
-    "";
+  const {
+    data:
+      rolesData,
+
+    error:
+      rolesError,
+  } =
+    await supabase
+      .from(
+        "user_roles"
+      )
+      .select(
+        "role"
+      )
+      .eq(
+        "user_id",
+        userId
+      );
+
+  if (
+    rolesError
+  ) {
+    console.error(
+      "Erro ao carregar roles em Meus Pedidos:",
+      rolesError
+    );
+  }
+
+  const roles =
+    (
+      rolesData ??
+      []
+    ).map(
+      (
+        row
+      ) =>
+        String(
+          row.role
+        )
+    );
+
+  // =========================================================
+  // QUEM PODE VER TODOS OS PEDIDOS
+  //
+  // Finance:
+  //   Ximenes / equipe responsável pela importação.
+  //
+  // Admin / Superadmin:
+  //   acompanhamento administrativo.
+  //
+  // Usuário comum:
+  //   somente os próprios pedidos.
+  // =========================================================
+
+  const canViewAll =
+    roles.includes(
+      "finance"
+    ) ||
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
+
+  // =========================================================
+  // FILTROS
+  // =========================================================
+
+  const search =
+    (
+      params.q ??
+      ""
+    ).trim();
+
+  const selectedStatus =
+    (
+      params.status ??
+      ""
+    ).trim();
+
+  // =========================================================
+  // SOLICITAÇÕES IMPORTADAS DO SIENGE
+  //
+  // Esta é a origem oficial de "Meus Pedidos".
+  // =========================================================
 
   let query =
     supabase
       .from(
         "v_sienge_request_summary"
       )
-      .select("*")
+      .select(
+        `
+        request_key,
+        sc_number,
+        requester_profile_id,
+        requester_sienge_username,
+        cost_center_or_site,
+        request_date,
+        items_count,
+        orders_count,
+        tracking_status,
+        next_delivery_forecast
+        `
+      )
       .order(
         "request_date",
         {
           ascending:
             false,
+
           nullsFirst:
             false,
         }
       );
 
-  if (status) {
+  // =========================================================
+  // SOLICITANTE COMUM
+  //
+  // Vê exclusivamente solicitações vinculadas ao perfil dele.
+  // =========================================================
+
+  if (
+    !canViewAll
+  ) {
     query =
       query.eq(
-        "tracking_status",
-        status
-      );
-  }
-
-  if (search) {
-    const safeSearch =
-      search
-        .replace(
-          /,/g,
-          " "
-        )
-        .replace(
-          /\(/g,
-          " "
-        )
-        .replace(
-          /\)/g,
-          " "
-        );
-
-    query =
-      query.or(
-        [
-          `sc_number.ilike.%${safeSearch}%`,
-          `cost_center_or_site.ilike.%${safeSearch}%`,
-        ].join(",")
+        "requester_profile_id",
+        userId
       );
   }
 
@@ -152,42 +335,113 @@ export default async function MyOrdersPage({
   } =
     await query;
 
-  if (error) {
+  if (
+    error
+  ) {
     console.error(
-      "Erro ao carregar Meus Pedidos:",
+      "Erro ao carregar solicitações do Sienge:",
       error
     );
   }
 
+  const allRequests =
+    (
+      data ??
+      []
+    ) as SiengeRequestRow[];
+
+  // =========================================================
+  // FILTRO EM MEMÓRIA
+  //
+  // Evita montar filtros .or() complexos no PostgREST.
+  // =========================================================
+
+  const normalizedSearch =
+    normalizeSearch(
+      search
+    );
+
   const requests =
-    data ?? [];
+    allRequests.filter(
+      (
+        request
+      ) => {
+        if (
+          selectedStatus &&
+          request.tracking_status !==
+            selectedStatus
+        ) {
+          return false;
+        }
+
+        if (
+          !normalizedSearch
+        ) {
+          return true;
+        }
+
+        const searchable =
+          normalizeSearch(
+            [
+              request.sc_number,
+              request
+                .requester_sienge_username,
+              request
+                .cost_center_or_site,
+              request
+                .tracking_status,
+            ]
+              .filter(
+                Boolean
+              )
+              .join(
+                " "
+              )
+          );
+
+        return searchable.includes(
+          normalizedSearch
+        );
+      }
+    );
+
+  // =========================================================
+  // INDICADORES
+  // =========================================================
 
   const total =
     requests.length;
 
   const completed =
     requests.filter(
-      (item) =>
-        item.tracking_status ===
+      (
+        request
+      ) =>
+        request.tracking_status ===
         "Entregue"
     ).length;
 
   const waitingDelivery =
     requests.filter(
-      (item) =>
+      (
+        request
+      ) =>
         [
           "Compra realizada",
           "Compra via cartão",
           "Disponível para retirada",
           "Em processo de entrega",
         ].includes(
-          item.tracking_status
+          request.tracking_status ??
+            ""
         )
     ).length;
 
   const inProgress =
     requests.filter(
-      (item) =>
+      (
+        request
+      ) =>
         ![
           "Entregue",
           "Compra realizada",
@@ -195,13 +449,20 @@ export default async function MyOrdersPage({
           "Disponível para retirada",
           "Em processo de entrega",
         ].includes(
-          item.tracking_status
+          request.tracking_status ??
+            ""
         )
     ).length;
 
+  // =========================================================
+  // RENDER
+  // =========================================================
+
   return (
     <MotionPage className="mx-auto max-w-[1500px]">
-      {/* CABEÇALHO */}
+      {/* =====================================================
+          CABEÇALHO
+      ====================================================== */}
 
       <MotionReveal>
         <div className="mb-7">
@@ -214,22 +475,32 @@ export default async function MyOrdersPage({
           </h1>
 
           <p className="mt-2 max-w-3xl text-sm text-base-content/55">
-            Acompanhe suas solicitações de compra realizadas no Sienge.
+            {canViewAll
+              ? "Acompanhe as solicitações importadas do Sienge e a evolução do processo de compra."
+              : "Acompanhe suas solicitações de compra importadas do Sienge."}
           </p>
         </div>
       </MotionReveal>
 
-      {/* INDICADORES */}
+      {/* =====================================================
+          INDICADORES
+      ====================================================== */}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MotionCard
-          delay={0.05}
+          delay={
+            0.05
+          }
         >
           <SummaryCard
             icon={
               ShoppingBag
             }
-            label="Minhas solicitações"
+            label={
+              canViewAll
+                ? "Solicitações"
+                : "Minhas solicitações"
+            }
             value={
               total
             }
@@ -237,7 +508,9 @@ export default async function MyOrdersPage({
         </MotionCard>
 
         <MotionCard
-          delay={0.1}
+          delay={
+            0.1
+          }
         >
           <SummaryCard
             icon={
@@ -251,7 +524,9 @@ export default async function MyOrdersPage({
         </MotionCard>
 
         <MotionCard
-          delay={0.15}
+          delay={
+            0.15
+          }
         >
           <SummaryCard
             icon={
@@ -265,7 +540,9 @@ export default async function MyOrdersPage({
         </MotionCard>
 
         <MotionCard
-          delay={0.2}
+          delay={
+            0.2
+          }
         >
           <SummaryCard
             icon={
@@ -279,10 +556,14 @@ export default async function MyOrdersPage({
         </MotionCard>
       </div>
 
-      {/* FILTROS */}
+      {/* =====================================================
+          FILTROS
+      ====================================================== */}
 
       <MotionReveal
-        delay={0.12}
+        delay={
+          0.12
+        }
       >
         <section className="card mb-6 border border-base-300 bg-base-100">
           <div className="card-body p-5">
@@ -292,7 +573,9 @@ export default async function MyOrdersPage({
             >
               <label className="input input-bordered flex items-center gap-2">
                 <Search
-                  size={17}
+                  size={
+                    17
+                  }
                   className="opacity-40"
                 />
 
@@ -301,7 +584,11 @@ export default async function MyOrdersPage({
                   defaultValue={
                     search
                   }
-                  placeholder="Buscar por SC ou centro de custo..."
+                  placeholder={
+                    canViewAll
+                      ? "Buscar por SC, solicitante ou centro de custo..."
+                      : "Buscar por SC ou centro de custo..."
+                  }
                   className="grow"
                 />
               </label>
@@ -309,7 +596,7 @@ export default async function MyOrdersPage({
               <select
                 name="status"
                 defaultValue={
-                  status
+                  selectedStatus
                 }
                 className="select select-bordered w-full"
               >
@@ -343,18 +630,21 @@ export default async function MyOrdersPage({
         </section>
       </MotionReveal>
 
-      {/* LISTA */}
+      {/* =====================================================
+          LISTA
 
-      <MotionReveal
-        delay={0.18}
-      >
-        <section className="card overflow-hidden border border-base-300 bg-base-100">
-          <div className="border-b border-base-300 px-6 py-5">
+          Mantida sem MotionList/MotionListItem para os registros
+          não ficarem presos invisíveis no viewport.
+      ====================================================== */}
+
+      <section className="overflow-hidden rounded-[22px] border border-base-300 bg-base-100 shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-base-300 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <h2 className="font-semibold text-base-content">
               Solicitações
             </h2>
 
-            <p className="mt-1 text-xs opacity-50">
+            <p className="mt-1 text-xs text-base-content/45">
               {requests.length} solicitação
               {requests.length ===
               1
@@ -368,152 +658,228 @@ export default async function MyOrdersPage({
             </p>
           </div>
 
-          {requests.length ===
-          0 ? (
-            <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-box bg-base-200">
-                <PackageSearch
-                  size={25}
-                  className="opacity-40"
-                />
-              </div>
+          {requests.length >
+            0 && (
+            <span className="w-fit rounded-lg bg-base-200 px-3 py-1.5 text-[10px] font-semibold text-base-content/45">
+              Importação Sienge
+            </span>
+          )}
+        </div>
 
-              <p className="mt-4 text-sm font-semibold">
-                Nenhuma solicitação encontrada
-              </p>
+        {/* ===================================================
+            VAZIO
+        ==================================================== */}
 
-              <p className="mt-2 max-w-md text-xs opacity-50">
-                Quando suas solicitações forem importadas, elas aparecerão aqui.
-              </p>
+        {requests.length ===
+        0 ? (
+          <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-base-200">
+              <PackageSearch
+                size={
+                  25
+                }
+                className="text-base-content/35"
+              />
             </div>
-          ) : (
-            <MotionList className="divide-y divide-base-300">
-              {requests.map(
-                (
-                  request
-                ) => (
-                  <MotionListItem
+
+            <p className="mt-4 text-sm font-semibold text-base-content">
+              Nenhuma solicitação encontrada
+            </p>
+
+            <p className="mt-2 max-w-md text-xs leading-5 text-base-content/45">
+              {canViewAll
+                ? "Nenhuma solicitação importada do Sienge corresponde aos filtros informados."
+                : "Quando suas solicitações forem importadas do Sienge e vinculadas ao seu usuário, elas aparecerão aqui."}
+            </p>
+          </div>
+        ) : (
+          /* =================================================
+              PEDIDOS
+          ================================================== */
+
+          <div className="divide-y divide-base-300">
+            {requests.map(
+              (
+                request
+              ) => {
+                const status =
+                  request.tracking_status ??
+                  "Solicitação recebida";
+
+                return (
+                  <Link
                     key={
                       request.request_key
                     }
+                    href={`/meus-pedidos/${encodeURIComponent(
+                      request.request_key
+                    )}`}
+                    className="group block px-6 py-5 transition-colors duration-150 hover:bg-base-200/55"
                   >
-                    <MotionInteractive>
-                      <Link
-                        href={`/meus-pedidos/${request.request_key}`}
-                        className="group block px-6 py-5 transition-colors hover:bg-base-200/60"
-                      >
-                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-bold text-primary">
-                                SC{" "}
-                                {
-                                  request.sc_number
+                    <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+                      {/* =====================================
+                          PRINCIPAL
+                      ====================================== */}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-primary">
+                            SC{" "}
+                            {
+                              request.sc_number
+                            }
+                          </p>
+
+                          <TrackingStatus
+                            status={
+                              status
+                            }
+                          />
+
+                          {canViewAll &&
+                            request
+                              .requester_sienge_username && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-base-200 px-2 py-1 text-[9px] font-semibold text-base-content/50">
+                              <UserRound
+                                size={
+                                  11
                                 }
-                              </p>
+                              />
 
-                              <MotionStatus>
-                                <TrackingStatus
-                                  status={
-                                    request.tracking_status
-                                  }
-                                />
-                              </MotionStatus>
-                            </div>
-
-                            <p className="mt-2 line-clamp-2 text-sm font-semibold">
-                              {request.cost_center_or_site ??
-                                "Centro de custo não informado"}
-                            </p>
-
-                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs opacity-55">
-                              <span className="inline-flex items-center gap-1.5">
-                                <CalendarDays
-                                  size={14}
-                                />
-
-                                {formatDate(
-                                  request.request_date
-                                )}
-                              </span>
-
-                              <span>
-                                {
-                                  request.items_count
-                                }{" "}
-                                item
-                                {request.items_count ===
-                                1
-                                  ? ""
-                                  : "s"}
-                              </span>
-
-                              {request.orders_count >
-                                0 && (
-                                <span>
-                                  {
-                                    request.orders_count
-                                  }{" "}
-                                  pedido
-                                  {request.orders_count ===
-                                  1
-                                    ? ""
-                                    : "s"}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-6">
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-40">
-                                Próxima previsão
-                              </p>
-
-                              <p className="mt-1 text-sm font-semibold">
-                                {formatDate(
-                                  request.next_delivery_forecast
-                                )}
-                              </p>
-                            </div>
-
-                            <ArrowRight
-                              size={19}
-                              className="opacity-25 transition-all duration-200 group-hover:translate-x-1 group-hover:text-primary group-hover:opacity-100"
-                            />
-                          </div>
+                              {
+                                request
+                                  .requester_sienge_username
+                              }
+                            </span>
+                          )}
                         </div>
-                      </Link>
-                    </MotionInteractive>
-                  </MotionListItem>
-                )
-              )}
-            </MotionList>
-          )}
-        </section>
-      </MotionReveal>
+
+                        {/* ===================================
+                            CENTRO / OBRA
+                        ==================================== */}
+
+                        <p className="mt-2 line-clamp-2 text-sm font-semibold text-base-content">
+                          {request.cost_center_or_site ??
+                            "Centro de custo / obra não informado"}
+                        </p>
+
+                        {/* ===================================
+                            METADADOS
+                        ==================================== */}
+
+                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-base-content/50">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CalendarDays
+                              size={
+                                14
+                              }
+                            />
+
+                            {formatDate(
+                              request.request_date
+                            )}
+                          </span>
+
+                          <span>
+                            {Number(
+                              request.items_count ??
+                                0
+                            )}{" "}
+                            item
+                            {Number(
+                              request.items_count ??
+                                0
+                            ) ===
+                            1
+                              ? ""
+                              : "s"}
+                          </span>
+
+                          {Number(
+                            request.orders_count ??
+                              0
+                          ) >
+                            0 && (
+                            <span>
+                              {Number(
+                                request.orders_count
+                              )}{" "}
+                              pedido
+                              {Number(
+                                request.orders_count
+                              ) ===
+                              1
+                                ? ""
+                                : "s"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* =====================================
+                          PREVISÃO
+                      ====================================== */}
+
+                      <div className="flex shrink-0 items-center gap-7">
+                        <div className="min-w-[145px]">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-base-content/35">
+                            Próxima previsão
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-base-content">
+                            {formatDate(
+                              request.next_delivery_forecast
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-base-200 text-base-content/30 transition-all duration-200 group-hover:translate-x-1 group-hover:bg-primary/10 group-hover:text-primary">
+                          <ArrowRight
+                            size={
+                              17
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              }
+            )}
+          </div>
+        )}
+      </section>
     </MotionPage>
   );
 }
 
+// ============================================================
+// SUMMARY CARD
+// ============================================================
+
 function SummaryCard({
-  icon: Icon,
+  icon:
+    Icon,
   label,
   value,
 }: {
   icon:
     typeof ShoppingBag;
 
-  label: string;
+  label:
+    string;
 
-  value: number;
+  value:
+    number;
 }) {
   return (
     <div className="card h-full border border-base-300 bg-base-100">
       <div className="card-body p-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-box bg-base-200">
           <Icon
-            size={19}
+            size={
+              19
+            }
             className="opacity-55"
           />
         </div>
@@ -530,30 +896,35 @@ function SummaryCard({
   );
 }
 
+// ============================================================
+// STATUS
+// ============================================================
+
 function TrackingStatus({
   status,
 }: {
-  status: string;
+  status:
+    string;
 }) {
-  const styles =
-    getStatusStyles(
-      status
-    );
-
   return (
     <span
       className={[
         "badge badge-sm",
-        styles,
-      ].join(" ")}
+        getStatusStyle(
+          status
+        ),
+      ].join(
+        " "
+      )}
     >
       {status}
     </span>
   );
 }
 
-function getStatusStyles(
-  status: string
+function getStatusStyle(
+  status:
+    string
 ) {
   switch (
     status

@@ -1,9 +1,16 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import {
+    revalidatePath,
+} from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+    redirect,
+} from "next/navigation";
+
+import {
+    createClient,
+} from "@/lib/supabase/server";
 
 export type PurchaseRequestState = {
     error: string | null;
@@ -39,131 +46,239 @@ const purchaseStatuses = [
     "cancelled",
 ] as const;
 
-function optionalUuid(value: FormDataEntryValue | null) {
-    const parsed = String(value ?? "").trim();
+// ============================================================
+// HELPERS
+// ============================================================
 
-    return parsed || null;
+function optionalUuid(
+    value:
+        | FormDataEntryValue
+        | null
+) {
+    const parsed =
+        String(
+            value ??
+            ""
+        ).trim();
+
+    return parsed ||
+        null;
 }
 
+// ============================================================
+// NOVA SOLICITAÇÃO
+// ============================================================
+
 export async function createPurchaseRequest(
-    _previousState: PurchaseRequestState,
-    formData: FormData
+    _previousState:
+        PurchaseRequestState,
+
+    formData:
+        FormData
 ): Promise<PurchaseRequestState> {
-    const title = String(
-        formData.get("title") ?? ""
-    ).trim();
+    const title =
+        String(
+            formData.get(
+                "title"
+            ) ??
+            ""
+        ).trim();
 
-    const justification = String(
-        formData.get("justification") ?? ""
-    ).trim();
+    const justification =
+        String(
+            formData.get(
+                "justification"
+            ) ??
+            ""
+        ).trim();
 
-    const priorityValue = String(
-        formData.get("priority") ?? "normal"
-    );
+    const priorityValue =
+        String(
+            formData.get(
+                "priority"
+            ) ??
+            "normal"
+        );
 
-    const requiredDateValue = String(
-        formData.get("required_date") ?? ""
-    ).trim();
+    const requiredDateValue =
+        String(
+            formData.get(
+                "required_date"
+            ) ??
+            ""
+        ).trim();
 
-    const submitMode = String(
-        formData.get("submit_mode") ?? "submit"
-    );
+    const submitMode =
+        String(
+            formData.get(
+                "submit_mode"
+            ) ??
+            "submit"
+        );
 
-    const itemsValue = String(
-        formData.get("items") ?? "[]"
-    );
+    const itemsValue =
+        String(
+            formData.get(
+                "items"
+            ) ??
+            "[]"
+        );
 
-    if (!title) {
+    // ========================================================
+    // VALIDAÇÃO
+    // ========================================================
+
+    if (
+        !title
+    ) {
         return {
-            error: "Informe o título do pedido.",
+            error:
+                "Informe o título do pedido.",
         };
     }
 
-    if (!justification) {
+    if (
+        !justification
+    ) {
         return {
-            error: "Informe a justificativa do pedido.",
+            error:
+                "Informe a justificativa do pedido.",
         };
     }
 
     if (
         !priorities.includes(
-            priorityValue as (typeof priorities)[number]
+            priorityValue as
+            (typeof priorities)[number]
         )
     ) {
         return {
-            error: "Prioridade inválida.",
+            error:
+                "Prioridade inválida.",
         };
     }
 
-    let items: unknown;
+    let items:
+        unknown;
 
     try {
-        items = JSON.parse(itemsValue);
+        items =
+            JSON.parse(
+                itemsValue
+            );
     } catch {
         return {
-            error: "Não foi possível processar os itens.",
+            error:
+                "Não foi possível processar os itens.",
         };
     }
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (
+        !Array.isArray(
+            items
+        ) ||
+        items.length ===
+        0
+    ) {
         return {
             error:
                 "Adicione pelo menos um item ao pedido.",
         };
     }
 
-    const hasInvalidItem = items.some((item) => {
-        if (
-            typeof item !== "object" ||
-            item === null
-        ) {
-            return true;
-        }
+    const hasInvalidItem =
+        items.some(
+            (
+                item
+            ) => {
+                if (
+                    typeof item !==
+                    "object" ||
+                    item ===
+                    null
+                ) {
+                    return true;
+                }
 
-        const current = item as {
-            description?: unknown;
-            quantity?: unknown;
-            estimated_unit_price?: unknown;
-        };
+                const current =
+                    item as {
+                        description?:
+                        unknown;
 
-        const description = String(
-            current.description ?? ""
-        ).trim();
+                        quantity?:
+                        unknown;
 
-        const quantity = Number(
-            current.quantity ?? 0
+                        estimated_unit_price?:
+                        unknown;
+                    };
+
+                const description =
+                    String(
+                        current.description ??
+                        ""
+                    ).trim();
+
+                const quantity =
+                    Number(
+                        current.quantity ??
+                        0
+                    );
+
+                const unitPrice =
+                    Number(
+                        current.estimated_unit_price ??
+                        0
+                    );
+
+                return (
+                    !description ||
+                    !Number.isFinite(
+                        quantity
+                    ) ||
+                    quantity <=
+                    0 ||
+                    !Number.isFinite(
+                        unitPrice
+                    ) ||
+                    unitPrice <
+                    0
+                );
+            }
         );
 
-        const unitPrice = Number(
-            current.estimated_unit_price ?? 0
-        );
-
-        return (
-            !description ||
-            !Number.isFinite(quantity) ||
-            quantity <= 0 ||
-            !Number.isFinite(unitPrice) ||
-            unitPrice < 0
-        );
-    });
-
-    if (hasInvalidItem) {
+    if (
+        hasInvalidItem
+    ) {
         return {
             error:
                 "Revise os itens. Descrição e quantidade são obrigatórias.",
         };
     }
 
-    const supabase = await createClient();
+    // ========================================================
+    // AUTH
+    // ========================================================
+
+    const supabase =
+        await createClient();
 
     const {
-        data: claimsData,
-        error: claimsError,
-    } = await supabase.auth.getClaims();
+        data:
+        claimsData,
+
+        error:
+        claimsError,
+    } =
+        await supabase.auth.getClaims();
+
+    const userId =
+        claimsData
+            ?.claims
+            ?.sub;
 
     if (
         claimsError ||
-        !claimsData?.claims?.sub
+        !userId
     ) {
         return {
             error:
@@ -171,38 +286,77 @@ export async function createPurchaseRequest(
         };
     }
 
-    const { data, error } = await supabase.rpc(
-        "create_purchase_request",
-        {
-            p_title: title,
-            p_justification: justification,
-            p_priority: priorityValue,
-            p_required_date:
-                requiredDateValue || null,
+    // ========================================================
+    // CRIAR
+    //
+    // O RPC é responsável por:
+    // - requester_id
+    // - número interno
+    // - data/hora de criação
+    // - itens
+    // - histórico inicial
+    // ========================================================
 
-            p_company_id: optionalUuid(
-                formData.get("company_id")
-            ),
+    const {
+        data,
+        error,
+    } =
+        await supabase.rpc(
+            "create_purchase_request",
+            {
+                p_title:
+                    title,
 
-            p_department_id: optionalUuid(
-                formData.get("department_id")
-            ),
+                p_justification:
+                    justification,
 
-            p_project_id: optionalUuid(
-                formData.get("project_id")
-            ),
+                p_priority:
+                    priorityValue,
 
-            p_cost_center_id: optionalUuid(
-                formData.get("cost_center_id")
-            ),
+                p_required_date:
+                    requiredDateValue ||
+                    null,
 
-            p_items: items,
+                p_company_id:
+                    optionalUuid(
+                        formData.get(
+                            "company_id"
+                        )
+                    ),
 
-            p_submit: submitMode !== "draft",
-        }
-    );
+                p_department_id:
+                    optionalUuid(
+                        formData.get(
+                            "department_id"
+                        )
+                    ),
 
-    if (error) {
+                p_project_id:
+                    optionalUuid(
+                        formData.get(
+                            "project_id"
+                        )
+                    ),
+
+                p_cost_center_id:
+                    optionalUuid(
+                        formData.get(
+                            "cost_center_id"
+                        )
+                    ),
+
+                p_items:
+                    items,
+
+                p_submit:
+                    submitMode !==
+                    "draft",
+            }
+        );
+
+    if (
+        error
+    ) {
         console.error(
             "Erro ao criar pedido:",
             error
@@ -215,96 +369,278 @@ export async function createPurchaseRequest(
         };
     }
 
-    if (!data) {
+    if (
+        !data
+    ) {
         return {
             error:
                 "O pedido foi processado, mas não foi possível identificar seu código.",
         };
     }
 
-    revalidatePath("/dashboard");
-    revalidatePath("/pedidos");
+    // ========================================================
+    // REVALIDAÇÃO
+    // ========================================================
 
-    redirect(`/pedidos/${data}`);
-}
-
-export async function updatePurchaseWorkflow(
-    _previousState: PurchaseWorkflowState,
-    formData: FormData
-): Promise<PurchaseWorkflowState> {
-    const requestId = String(
-        formData.get("request_id") ?? ""
-    ).trim();
-
-    const status = String(
-        formData.get("status") ?? ""
+    revalidatePath(
+        "/dashboard"
     );
 
-    if (!requestId) {
+    revalidatePath(
+        "/pedidos"
+    );
+
+    revalidatePath(
+        "/meus-pedidos"
+    );
+
+    redirect(
+        `/pedidos/${data}`
+    );
+}
+
+// ============================================================
+// ATUALIZAÇÃO DO PROCESSO DE COMPRAS
+// ============================================================
+
+export async function updatePurchaseWorkflow(
+    _previousState:
+        PurchaseWorkflowState,
+
+    formData:
+        FormData
+): Promise<PurchaseWorkflowState> {
+    const requestId =
+        String(
+            formData.get(
+                "request_id"
+            ) ??
+            ""
+        ).trim();
+
+    const status =
+        String(
+            formData.get(
+                "status"
+            ) ??
+            ""
+        );
+
+    if (
+        !requestId
+    ) {
         return {
-            error: "Pedido não identificado.",
-            success: null,
+            error:
+                "Pedido não identificado.",
+
+            success:
+                null,
         };
     }
 
     if (
         !purchaseStatuses.includes(
-            status as (typeof purchaseStatuses)[number]
+            status as
+            (typeof purchaseStatuses)[number]
         )
     ) {
         return {
-            error: "Status inválido.",
-            success: null,
+            error:
+                "Status inválido.",
+
+            success:
+                null,
         };
     }
 
-    const supabase = await createClient();
+    const supabase =
+        await createClient();
 
-    const { error } = await supabase.rpc(
-        "update_purchase_workflow",
-        {
-            p_request_id: requestId,
-            p_status: status,
+    // ========================================================
+    // AUTH
+    // ========================================================
 
-            p_sienge_request_number:
+    const {
+        data:
+        claimsData,
+
+        error:
+        claimsError,
+    } =
+        await supabase.auth.getClaims();
+
+    const userId =
+        claimsData
+            ?.claims
+            ?.sub;
+
+    if (
+        claimsError ||
+        !userId
+    ) {
+        return {
+            error:
+                "Sua sessão expirou. Entre novamente no sistema.",
+
+            success:
+                null,
+        };
+    }
+
+    // ========================================================
+    // PERMISSÃO OPERACIONAL
+    //
+    // Não confiar apenas no formulário oculto na interface.
+    // ========================================================
+
+    const {
+        data:
+        rolesData,
+
+        error:
+        rolesError,
+    } =
+        await supabase
+            .from(
+                "user_roles"
+            )
+            .select(
+                "role"
+            )
+            .eq(
+                "user_id",
+                userId
+            );
+
+    if (
+        rolesError
+    ) {
+        console.error(
+            "Erro ao validar permissão de compras:",
+            rolesError
+        );
+
+        return {
+            error:
+                "Não foi possível validar sua permissão.",
+
+            success:
+                null,
+        };
+    }
+
+    const roles =
+        (
+            rolesData ??
+            []
+        ).map(
+            (
+                row
+            ) =>
                 String(
-                    formData.get(
-                        "sienge_request_number"
-                    ) ?? ""
-                ).trim() || null,
+                    row.role
+                )
+        );
 
-            p_sienge_order_number:
-                String(
-                    formData.get(
-                        "sienge_order_number"
-                    ) ?? ""
-                ).trim() || null,
+    const canManage =
+        roles.includes(
+            "buyer"
+        ) ||
+        roles.includes(
+            "finance"
+        ) ||
+        roles.includes(
+            "admin"
+        ) ||
+        roles.includes(
+            "superadmin"
+        );
 
-            p_supplier_id: optionalUuid(
-                formData.get("supplier_id")
-            ),
+    if (
+        !canManage
+    ) {
+        return {
+            error:
+                "Você não possui permissão para alterar o andamento desta compra.",
 
-            p_order_date:
-                String(
-                    formData.get("order_date") ?? ""
-                ).trim() || null,
+            success:
+                null,
+        };
+    }
 
-            p_expected_delivery_date:
-                String(
-                    formData.get(
-                        "expected_delivery_date"
-                    ) ?? ""
-                ).trim() || null,
+    // ========================================================
+    // ATUALIZAÇÃO
+    // ========================================================
 
-            p_internal_notes:
-                String(
-                    formData.get("internal_notes") ??
-                    ""
-                ).trim() || null,
-        }
-    );
+    const {
+        error,
+    } =
+        await supabase.rpc(
+            "update_purchase_workflow",
+            {
+                p_request_id:
+                    requestId,
 
-    if (error) {
+                p_status:
+                    status,
+
+                p_sienge_request_number:
+                    String(
+                        formData.get(
+                            "sienge_request_number"
+                        ) ??
+                        ""
+                    ).trim() ||
+                    null,
+
+                p_sienge_order_number:
+                    String(
+                        formData.get(
+                            "sienge_order_number"
+                        ) ??
+                        ""
+                    ).trim() ||
+                    null,
+
+                p_supplier_id:
+                    optionalUuid(
+                        formData.get(
+                            "supplier_id"
+                        )
+                    ),
+
+                p_order_date:
+                    String(
+                        formData.get(
+                            "order_date"
+                        ) ??
+                        ""
+                    ).trim() ||
+                    null,
+
+                p_expected_delivery_date:
+                    String(
+                        formData.get(
+                            "expected_delivery_date"
+                        ) ??
+                        ""
+                    ).trim() ||
+                    null,
+
+                p_internal_notes:
+                    String(
+                        formData.get(
+                            "internal_notes"
+                        ) ??
+                        ""
+                    ).trim() ||
+                    null,
+            }
+        );
+
+    if (
+        error
+    ) {
         console.error(
             "Erro ao atualizar workflow:",
             error
@@ -314,16 +650,36 @@ export async function updatePurchaseWorkflow(
             error:
                 error.message ||
                 "Não foi possível atualizar o pedido.",
-            success: null,
+
+            success:
+                null,
         };
     }
 
-    revalidatePath("/pedidos");
-    revalidatePath(`/pedidos/${requestId}`);
-    revalidatePath("/dashboard");
+    // ========================================================
+    // REVALIDAÇÃO
+    // ========================================================
+
+    revalidatePath(
+        "/pedidos"
+    );
+
+    revalidatePath(
+        `/pedidos/${requestId}`
+    );
+
+    revalidatePath(
+        "/meus-pedidos"
+    );
+
+    revalidatePath(
+        "/dashboard"
+    );
 
     return {
-        error: null,
+        error:
+            null,
+
         success:
             "Pedido atualizado com sucesso.",
     };

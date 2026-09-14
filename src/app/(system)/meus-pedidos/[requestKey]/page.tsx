@@ -1,8 +1,5 @@
 import type {
-  LucideIcon,
-} from "lucide-react";
-
-import type {
+  ElementType,
   ReactNode,
 } from "react";
 
@@ -17,8 +14,14 @@ import {
   ArrowLeft,
   Building2,
   CalendarDays,
+  Check,
   CheckCircle2,
+  Circle,
+  Eye,
+  FileText,
+  Hash,
   Package,
+  PackageCheck,
   ShoppingCart,
   Store,
   Truck,
@@ -29,14 +32,11 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
-import {
-  MotionCard,
-  MotionList,
-  MotionListItem,
-  MotionPage,
-  MotionReveal,
-  MotionStatus,
-} from "@/components/ui/motion";
+import DeliveryConfirmationForm from "./delivery-confirmation-form";
+
+// ============================================================
+// TIPOS
+// ============================================================
 
 type PageProps = {
   params: Promise<{
@@ -44,8 +44,36 @@ type PageProps = {
   }>;
 };
 
+type DeliveryConfirmationRow = {
+  item_id: string;
+
+  requester_profile_id:
+    | string
+    | null;
+
+  delivery_status:
+    | string
+    | null;
+
+  delivery_date:
+    | string
+    | null;
+
+  received_by:
+    | string
+    | null;
+
+  invoice_number:
+    | string
+    | null;
+
+  updated_at:
+    | string
+    | null;
+};
+
 // ============================================================
-// FORMATAÇÕES
+// FORMATADORES
 // ============================================================
 
 function formatDate(
@@ -54,25 +82,40 @@ function formatDate(
     | null
     | undefined
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat(
-    "pt-BR"
-  ).format(
-    new Date(
-      `${value}T12:00:00`
-    )
-  );
+  const iso =
+    value.match(
+      /^\d{4}-\d{2}-\d{2}/
+    )?.[0];
+
+  if (
+    !iso
+  ) {
+    return "-";
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] =
+    iso.split(
+      "-"
+    );
+
+  return `${day}/${month}/${year}`;
 }
 
 function formatQuantity(
   value:
-    | string
     | number
+    | string
     | null
-    | undefined
 ) {
   if (
     value === null ||
@@ -82,20 +125,25 @@ function formatQuantity(
   }
 
   const numeric =
-    Number(value);
+    Number(
+      value
+    );
 
   if (
     !Number.isFinite(
       numeric
     )
   ) {
-    return String(value);
+    return String(
+      value
+    );
   }
 
   return new Intl.NumberFormat(
     "pt-BR",
     {
-      maximumFractionDigits: 4,
+      maximumFractionDigits:
+        4,
     }
   ).format(
     numeric
@@ -103,10 +151,10 @@ function formatQuantity(
 }
 
 // ============================================================
-// PÁGINA
+// PAGE
 // ============================================================
 
-export default async function FinanceSiengeRequestDetailsPage({
+export default async function MyOrderDetailsPage({
   params,
 }: PageProps) {
   const {
@@ -122,26 +170,38 @@ export default async function FinanceSiengeRequestDetailsPage({
   // =========================================================
 
   const {
-    data: claimsData,
+    data:
+      claimsData,
+
+    error:
+      claimsError,
   } =
     await supabase.auth.getClaims();
 
   const userId =
-    claimsData?.claims?.sub;
+    claimsData
+      ?.claims
+      ?.sub;
 
-  if (!userId) {
+  if (
+    claimsError ||
+    !userId
+  ) {
     redirect(
       "/login"
     );
   }
 
   // =========================================================
-  // PERMISSÃO FINANCEIRO / ADMIN
+  // ROLES
   // =========================================================
 
   const {
-    data: roleRows,
-    error: roleError,
+    data:
+      rolesData,
+
+    error:
+      rolesError,
   } =
     await supabase
       .from(
@@ -155,27 +215,29 @@ export default async function FinanceSiengeRequestDetailsPage({
         userId
       );
 
-  if (roleError) {
+  if (
+    rolesError
+  ) {
     console.error(
-      "Erro ao consultar permissões:",
-      roleError
-    );
-
-    redirect(
-      "/dashboard"
+      "Erro ao carregar roles do pedido:",
+      rolesError
     );
   }
 
   const roles =
     (
-      roleRows ??
+      rolesData ??
       []
     ).map(
-      (item) =>
-        item.role
+      (
+        row
+      ) =>
+        String(
+          row.role
+        )
     );
 
-  const canAccess =
+  const canViewAll =
     roles.includes(
       "finance"
     ) ||
@@ -186,44 +248,73 @@ export default async function FinanceSiengeRequestDetailsPage({
       "superadmin"
     );
 
-  if (!canAccess) {
-    redirect(
-      "/dashboard"
-    );
-  }
-
   // =========================================================
   // RESUMO DA SOLICITAÇÃO
   // =========================================================
 
-  const {
-    data: summary,
-    error: summaryError,
-  } =
-    await supabase
+  let summaryQuery =
+    supabase
       .from(
         "v_sienge_request_summary"
       )
-      .select("*")
+      .select(
+        "*"
+      )
       .eq(
         "request_key",
         requestKey
-      )
+      );
+
+  // =========================================================
+  // USUÁRIO COMUM:
+  // SOMENTE SOLICITAÇÕES VINCULADAS A ELE
+  // =========================================================
+
+  if (
+    !canViewAll
+  ) {
+    summaryQuery =
+      summaryQuery.eq(
+        "requester_profile_id",
+        userId
+      );
+  }
+
+  const {
+    data:
+      summary,
+
+    error:
+      summaryError,
+  } =
+    await summaryQuery
       .maybeSingle();
 
-  if (summaryError) {
+  if (
+    summaryError
+  ) {
     console.error(
-      "Erro ao carregar resumo da SC:",
+      "Erro ao carregar solicitação Sienge:",
       summaryError
     );
   }
 
-  if (!summary) {
+  if (
+    !summary
+  ) {
     notFound();
   }
 
   // =========================================================
-  // ITENS DA SC
+  // IDENTIFICAR DONO
+  // =========================================================
+
+  const isOwnRequest =
+    summary.requester_profile_id ===
+    userId;
+
+  // =========================================================
+  // ITENS IMPORTADOS DO SIENGE
   // =========================================================
 
   let itemsQuery =
@@ -236,13 +327,11 @@ export default async function FinanceSiengeRequestDetailsPage({
         id,
         sc_number,
         insumo,
-
-        requester_sienge_username,
         requester_profile_id,
+        requester_sienge_username,
 
         cost_center_or_site,
         request_date,
-
         quantity,
         unit,
 
@@ -279,7 +368,7 @@ export default async function FinanceSiengeRequestDetailsPage({
       );
 
   // =========================================================
-  // MESMO AGRUPAMENTO DA VIEW
+  // MESMO SOLICITANTE
   // =========================================================
 
   if (
@@ -290,15 +379,27 @@ export default async function FinanceSiengeRequestDetailsPage({
         "requester_profile_id",
         summary.requester_profile_id
       );
-  } else if (
-    summary.requester_sienge_username
-  ) {
+  } else {
     itemsQuery =
-      itemsQuery.eq(
-        "requester_sienge_username",
-        summary.requester_sienge_username
+      itemsQuery.is(
+        "requester_profile_id",
+        null
       );
+
+    if (
+      summary.requester_sienge_username
+    ) {
+      itemsQuery =
+        itemsQuery.eq(
+          "requester_sienge_username",
+          summary.requester_sienge_username
+        );
+    }
   }
+
+  // =========================================================
+  // MESMO CENTRO / OBRA
+  // =========================================================
 
   if (
     summary.cost_center_or_site
@@ -317,19 +418,25 @@ export default async function FinanceSiengeRequestDetailsPage({
   }
 
   const {
-    data: itemsData,
-    error: itemsError,
+    data:
+      itemsData,
+
+    error:
+      itemsError,
   } =
     await itemsQuery.order(
       "insumo",
       {
-        ascending: true,
+        ascending:
+          true,
       }
     );
 
-  if (itemsError) {
+  if (
+    itemsError
+  ) {
     console.error(
-      "Erro ao carregar itens da SC:",
+      "Erro ao carregar itens da solicitação:",
       itemsError
     );
   }
@@ -339,475 +446,930 @@ export default async function FinanceSiengeRequestDetailsPage({
     [];
 
   if (
-    items.length === 0
+    items.length ===
+    0
   ) {
     notFound();
   }
+
+  // =========================================================
+  // CONFIRMAÇÕES DO SOLICITANTE
+  //
+  // Esses dados NÃO vêm da máscara do Sienge.
+  // São dados locais preenchidos pelo colaborador.
+  // =========================================================
+
+  const itemIds =
+    items.map(
+      (
+        item
+      ) =>
+        String(
+          item.id
+        )
+    );
+
+  const {
+    data:
+      confirmationsData,
+
+    error:
+      confirmationsError,
+  } =
+    await supabase
+      .from(
+        "sienge_requester_delivery_confirmations"
+      )
+      .select(
+        `
+        item_id,
+        requester_profile_id,
+        delivery_status,
+        delivery_date,
+        received_by,
+        invoice_number,
+        updated_at
+        `
+      )
+      .in(
+        "item_id",
+        itemIds
+      );
+
+  if (
+    confirmationsError
+  ) {
+    console.error(
+      "Erro ao carregar confirmações de recebimento:",
+      confirmationsError
+    );
+  }
+
+  const confirmations =
+    (
+      confirmationsData ??
+      []
+    ) as DeliveryConfirmationRow[];
+
+  const confirmationByItem =
+    new Map<
+      string,
+      DeliveryConfirmationRow
+    >();
+
+  for (
+    const confirmation
+    of confirmations
+  ) {
+    confirmationByItem.set(
+      String(
+        confirmation.item_id
+      ),
+      confirmation
+    );
+  }
+
+  // =========================================================
+  // DADOS GERAIS
+  // =========================================================
+
+  const trackingStatus =
+    summary.tracking_status ??
+    "Solicitação recebida";
+
+  const requesterName =
+    summary.requester_sienge_username ??
+    "Não informado";
 
   // =========================================================
   // TELA
   // =========================================================
 
   return (
-    <MotionPage className="mx-auto max-w-[1500px]">
+    <div className="mx-auto max-w-[1500px]">
       {/* =====================================================
           VOLTAR
       ====================================================== */}
 
-      <MotionReveal>
-        <Link
-          href="/financeiro/sienge?tab=pedidos"
-          className="btn btn-ghost btn-sm mb-6 gap-2 px-2 text-base-content/55 hover:text-primary"
-        >
-          <ArrowLeft
-            size={16}
-          />
+      <Link
+        href="/meus-pedidos"
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#AF1B1B]"
+      >
+        <ArrowLeft
+          size={
+            16
+          }
+        />
 
-          Voltar para pedidos importados
-        </Link>
-      </MotionReveal>
+        Voltar para Meus Pedidos
+      </Link>
 
       {/* =====================================================
           CABEÇALHO
       ====================================================== */}
 
-      <MotionReveal
-        delay={0.04}
-      >
-        <div className="mb-7">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm font-bold text-primary">
-              SC{" "}
-              {
-                summary.sc_number
-              }
-            </p>
+      <header className="mb-7">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm font-bold text-[#AF1B1B]">
+            SC{" "}
+            {
+              summary.sc_number
+            }
+          </p>
 
-            <MotionStatus>
-              <StatusBadge
-                status={
-                  summary.tracking_status
+          <StatusBadge
+            status={
+              trackingStatus
+            }
+          />
+
+          {canViewAll &&
+            !isOwnRequest && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">
+              <Eye
+                size={
+                  13
                 }
               />
-            </MotionStatus>
-          </div>
 
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-base-content">
-            Acompanhamento da solicitação
-          </h1>
-
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-base-content/55">
-            Consulte os itens, pedidos, fornecedores e informações de entrega importadas do Sienge.
-          </p>
+              Visualização administrativa
+            </span>
+          )}
         </div>
-      </MotionReveal>
+
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+          Acompanhamento da solicitação
+        </h1>
+
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          Consulte os dados importados do Sienge, acompanhe o
+          andamento da compra e confirme o recebimento dos itens.
+        </p>
+      </header>
 
       {/* =====================================================
           RESUMO
       ====================================================== */}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MotionCard
-          delay={0.05}
-        >
-          <InfoCard
-            icon={
-              UserRound
-            }
-            label="Solicitante"
-            value={
-              summary.requester_sienge_username ??
-              "-"
-            }
-          />
-        </MotionCard>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <InfoCard
+          icon={
+            FileText
+          }
+          label="Solicitação"
+          value={`SC ${
+            summary.sc_number ??
+            "-"
+          }`}
+        />
 
-        <MotionCard
-          delay={0.1}
-        >
-          <InfoCard
-            icon={
-              Building2
-            }
-            label="Centro de custo / Obra"
-            value={
-              summary.cost_center_or_site ??
-              "-"
-            }
-          />
-        </MotionCard>
+        <InfoCard
+          icon={
+            UserRound
+          }
+          label="Solicitante"
+          value={
+            requesterName
+          }
+        />
 
-        <MotionCard
-          delay={0.15}
-        >
-          <InfoCard
-            icon={
-              CalendarDays
-            }
-            label="Data da solicitação"
-            value={
-              formatDate(
-                summary.request_date
-              )
-            }
-          />
-        </MotionCard>
+        <InfoCard
+          icon={
+            Building2
+          }
+          label="Centro de custo / Obra"
+          value={
+            summary.cost_center_or_site ??
+            "-"
+          }
+        />
 
-        <MotionCard
-          delay={0.2}
-        >
-          <InfoCard
-            icon={
-              Package
-            }
-            label="Quantidade de itens"
-            value={
-              String(
-                summary.items_count ??
-                items.length
-              )
-            }
-          />
-        </MotionCard>
+        <InfoCard
+          icon={
+            CalendarDays
+          }
+          label="Data da solicitação"
+          value={
+            formatDate(
+              summary.request_date
+            )
+          }
+        />
+
+        <InfoCard
+          icon={
+            Package
+          }
+          label="Itens"
+          value={
+            String(
+              summary.items_count ??
+              items.length
+            )
+          }
+        />
       </div>
 
       {/* =====================================================
-          INDICADORES
+          ANDAMENTO
       ====================================================== */}
 
-      <MotionReveal
-        delay={0.12}
-      >
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
-          <MotionCard
-            delay={0.05}
-          >
-            <MiniMetric
-              icon={
-                Package
-              }
-              label="Itens"
-              value={
-                summary.items_count ??
-                items.length
-              }
-            />
-          </MotionCard>
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-slate-950">
+                Andamento da compra
+              </h2>
 
-          <MotionCard
-            delay={0.1}
-          >
-            <MiniMetric
-              icon={
-                ShoppingCart
-              }
-              label="Pedidos gerados"
-              value={
-                summary.orders_count ??
-                0
-              }
-            />
-          </MotionCard>
+              <p className="mt-1 text-xs text-slate-500">
+                Status calculado a partir das informações
+                importadas do Sienge.
+              </p>
+            </div>
 
-          <MotionCard
-            delay={0.15}
-          >
-            <MiniMetric
-              icon={
-                Store
-              }
-              label="Fornecedores"
-              value={
-                summary.suppliers_count ??
-                0
+            <StatusBadge
+              status={
+                trackingStatus
               }
             />
-          </MotionCard>
+          </div>
         </div>
-      </MotionReveal>
+
+        <OrderTimeline
+          status={
+            trackingStatus
+          }
+        />
+      </section>
 
       {/* =====================================================
           ITENS
       ====================================================== */}
 
-      <MotionReveal
-        delay={0.2}
-      >
-        <section className="card overflow-hidden border border-base-300 bg-base-100">
-          {/* CABEÇALHO */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-6 py-5">
+          <h2 className="font-semibold text-slate-950">
+            Itens da solicitação
+          </h2>
 
-          <div className="border-b border-base-300 px-6 py-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-base-content">
-                  Itens da solicitação
-                </h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Informações importadas da máscara do Sienge e
+            confirmação de recebimento de cada item.
+          </p>
+        </div>
 
-                <p className="mt-1 text-xs text-base-content/50">
-                  Cada item pode possuir pedido, fornecedor e previsão de entrega diferentes.
-                </p>
+        <div className="divide-y divide-slate-200">
+          {items.map(
+            (
+              item,
+              index
+            ) => {
+              const confirmation =
+                confirmationByItem.get(
+                  String(
+                    item.id
+                  )
+                );
+
+              const itemRequesterName =
+                item.requester_sienge_username ??
+                requesterName;
+
+              const processAllowsConfirmation =
+                Boolean(
+                  item.order_number
+                ) ||
+                [
+                  "Compra realizada",
+                  "Compra via cartão",
+                  "Disponível para retirada",
+                  "Em processo de entrega",
+                  "Entregue",
+                ].includes(
+                  trackingStatus
+                );
+
+              // =================================================
+              // SOMENTE O SOLICITANTE VINCULADO PODE EDITAR
+              // =================================================
+
+              const canUpdateDelivery =
+                isOwnRequest &&
+                processAllowsConfirmation;
+
+              return (
+                <article
+                  key={
+                    item.id
+                  }
+                  className="p-5 sm:p-6"
+                >
+                  {/* =========================================
+                      CABEÇALHO ITEM
+                  ========================================== */}
+
+                  <div className="mb-6 flex flex-col gap-4 border-b border-slate-100 pb-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-lg bg-[#AF1B1B]/8 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#AF1B1B]">
+                          Item{" "}
+                          {
+                            index +
+                            1
+                          }
+                        </span>
+
+                        {item.supply_status && (
+                          <ItemBadge>
+                            {
+                              item.supply_status
+                            }
+                          </ItemBadge>
+                        )}
+
+                        {item.order_number && (
+                          <ItemBadge>
+                            Pedido{" "}
+                            {
+                              item.order_number
+                            }
+                          </ItemBadge>
+                        )}
+
+                        {confirmation
+                          ?.delivery_status && (
+                          <ItemBadge>
+                            Recebimento:{" "}
+                            {
+                              confirmation.delivery_status
+                            }
+                          </ItemBadge>
+                        )}
+                      </div>
+
+                      <h3 className="mt-3 text-lg font-semibold leading-7 text-slate-950">
+                        {item.insumo ??
+                          "Item sem descrição"}
+                      </h3>
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        SC{" "}
+                        {
+                          item.sc_number ??
+                          summary.sc_number ??
+                          "-"
+                        }
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 xl:min-w-[170px]">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Quantidade
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {formatQuantity(
+                          item.quantity
+                        )}{" "}
+                        {
+                          item.unit ??
+                          ""
+                        }
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* =========================================
+                      DADOS DA SOLICITAÇÃO
+                  ========================================== */}
+
+                  <section className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/40">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        Dados da solicitação
+                      </h4>
+
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Informações registradas na solicitação
+                        original e importadas do Sienge.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                      <DataField
+                        icon={
+                          FileText
+                        }
+                        label="Insumo"
+                        value={
+                          item.insumo ??
+                          "-"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Building2
+                        }
+                        label="Obra / Centro de Custo"
+                        value={
+                          item.cost_center_or_site ??
+                          "-"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          CalendarDays
+                        }
+                        label="Data da Solicitação"
+                        value={
+                          formatDate(
+                            item.request_date
+                          )
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Truck
+                        }
+                        label="Previsão Inicial"
+                        value={
+                          formatDate(
+                            item.initial_delivery_forecast
+                          )
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          UserRound
+                        }
+                        label="Solicitante"
+                        value={
+                          itemRequesterName
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Hash
+                        }
+                        label="SC"
+                        value={
+                          item.sc_number ??
+                          summary.sc_number ??
+                          "-"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Package
+                        }
+                        label="Quantidade Solicitada"
+                        value={
+                          formatQuantity(
+                            item.quantity
+                          )
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          PackageCheck
+                        }
+                        label="Unidade de Medida"
+                        value={
+                          item.unit ??
+                          "-"
+                        }
+                      />
+                    </div>
+                  </section>
+
+                  {/* =========================================
+                      ACOMPANHAMENTO DE SUPRIMENTOS
+                  ========================================== */}
+
+                  <section className="mb-5 rounded-2xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-900">
+                            Acompanhamento de Suprimentos
+                          </h4>
+
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Dados atualizados por meio da
+                            importação da máscara do Sienge.
+                          </p>
+                        </div>
+
+                        <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                          Somente leitura
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                      <DataField
+                        icon={
+                          CheckCircle2
+                        }
+                        label="Status Suprimentos"
+                        value={
+                          item.supply_status ??
+                          trackingStatus
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          CalendarDays
+                        }
+                        label="Data do Status"
+                        value={
+                          formatDate(
+                            item.supply_status_date
+                          )
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          ShoppingCart
+                        }
+                        label="Pedido"
+                        value={
+                          item.order_number ??
+                          "Ainda não gerado"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Store
+                        }
+                        label="Fornecedor"
+                        value={
+                          item.supplier_name ??
+                          "Ainda não definido"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          UserRound
+                        }
+                        label="Contato"
+                        value={
+                          item.supplier_contact ??
+                          "-"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          FileText
+                        }
+                        label="Telefone"
+                        value={
+                          item.supplier_phone ??
+                          "-"
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          Truck
+                        }
+                        label="Previsão de Entrega / Retirada"
+                        value={
+                          formatDate(
+                            item.delivery_or_pickup_forecast
+                          )
+                        }
+                      />
+
+                      <DataField
+                        icon={
+                          CheckCircle2
+                        }
+                        label="Autorização"
+                        value={
+                          item.authorization_status ??
+                          "-"
+                        }
+                      />
+                    </div>
+                  </section>
+
+                  {/* =========================================
+                      RECEBIMENTO DO SOLICITANTE
+                  ========================================== */}
+
+                  <section className="rounded-2xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-900">
+                            Recebimento
+                          </h4>
+
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                            Confirme o recebimento deste item após
+                            sua entrega.
+                          </p>
+                        </div>
+
+                        {canUpdateDelivery ? (
+                          <span className="w-fit rounded-full border border-[#AF1B1B]/15 bg-[#AF1B1B]/5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#AF1B1B]">
+                            Sua responsabilidade
+                          </span>
+                        ) : (
+                          <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                            Somente leitura
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-5">
+                      {/* =====================================
+                          VISUALIZAÇÃO ADMINISTRATIVA
+                      ====================================== */}
+
+                      {canViewAll &&
+                        !isOwnRequest && (
+                          <div className="mb-5 flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <Eye
+                              size={
+                                17
+                              }
+                              className="mt-0.5 shrink-0 text-slate-400"
+                            />
+
+                            <div>
+                              <p className="text-xs font-semibold text-slate-700">
+                                Visualização somente leitura
+                              </p>
+
+                              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                                Os dados de recebimento devem ser
+                                preenchidos pelo solicitante
+                                responsável por esta SC.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                      {/* =====================================
+                          FORMULÁRIO
+
+                          SOMENTE ESTES CAMPOS SÃO EDITÁVEIS:
+                          - Status da entrega
+                          - Data
+                          - Recebido por
+                          - Nota Fiscal
+                      ====================================== */}
+
+                      <DeliveryConfirmationForm
+                        itemId={
+                          String(
+                            item.id
+                          )
+                        }
+                        requestKey={
+                          requestKey
+                        }
+                        currentStatus={
+                          confirmation
+                            ?.delivery_status ??
+                          null
+                        }
+                        currentDate={
+                          confirmation
+                            ?.delivery_date ??
+                          null
+                        }
+                        currentReceivedBy={
+                          confirmation
+                            ?.received_by ??
+                          null
+                        }
+                        currentInvoiceNumber={
+                          confirmation
+                            ?.invoice_number ??
+                          null
+                        }
+                        disabled={
+                          !canUpdateDelivery
+                        }
+                      />
+                    </div>
+                  </section>
+                </article>
+              );
+            }
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ============================================================
+// TIMELINE
+// ============================================================
+
+function OrderTimeline({
+  status,
+}: {
+  status:
+    string;
+}) {
+  const currentStep =
+    getCurrentStep(
+      status
+    );
+
+  const steps = [
+    {
+      label:
+        "Solicitação recebida",
+
+      description:
+        "Solicitação identificada na importação.",
+    },
+
+    {
+      label:
+        "Em cotação",
+
+      description:
+        "Suprimentos está realizando a cotação.",
+    },
+
+    {
+      label:
+        "Em aprovação",
+
+      description:
+        "Compra em processo de aprovação.",
+    },
+
+    {
+      label:
+        "Compra realizada",
+
+      description:
+        "Compra realizada ou pedido emitido.",
+    },
+
+    {
+      label:
+        "Entrega / Retirada",
+
+      description:
+        "Aguardando entrega ou retirada.",
+    },
+
+    {
+      label:
+        "Entregue",
+
+      description:
+        "Processo de entrega concluído.",
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      {steps.map(
+        (
+          step,
+          index
+        ) => {
+          const completed =
+            index <
+            currentStep;
+
+          const active =
+            index ===
+            currentStep;
+
+          return (
+            <div
+              key={
+                step.label
+              }
+              className={[
+                "relative rounded-xl border p-4",
+                completed
+                  ? "border-emerald-200 bg-emerald-50"
+                  : active
+                    ? "border-[#AF1B1B]/30 bg-[#AF1B1B]/5"
+                    : "border-slate-200 bg-slate-50",
+              ].join(
+                " "
+              )}
+            >
+              <div
+                className={[
+                  "mb-3 flex h-7 w-7 items-center justify-center rounded-full",
+                  completed
+                    ? "bg-emerald-600 text-white"
+                    : active
+                      ? "bg-[#AF1B1B] text-white"
+                      : "bg-slate-200 text-slate-400",
+                ].join(
+                  " "
+                )}
+              >
+                {completed ? (
+                  <Check
+                    size={
+                      15
+                    }
+                  />
+                ) : (
+                  <Circle
+                    size={
+                      11
+                    }
+                    fill={
+                      active
+                        ? "currentColor"
+                        : "none"
+                    }
+                  />
+                )}
               </div>
 
-              <span className="badge badge-ghost">
-                {items.length}{" "}
-                item
-                {items.length ===
-                1
-                  ? ""
-                  : "s"}
-              </span>
+              <p
+                className={[
+                  "text-xs font-semibold",
+                  active
+                    ? "text-[#AF1B1B]"
+                    : completed
+                      ? "text-emerald-800"
+                      : "text-slate-600",
+                ].join(
+                  " "
+                )}
+              >
+                {
+                  step.label
+                }
+              </p>
+
+              <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                {
+                  step.description
+                }
+              </p>
             </div>
-          </div>
-
-          {/* LISTA */}
-
-          <MotionList className="divide-y divide-base-300">
-            {items.map(
-              (
-                item,
-                index
-              ) => {
-                const forecast =
-                  item.delivery_or_pickup_forecast ??
-                  item.initial_delivery_forecast;
-
-                return (
-                  <MotionListItem
-                    key={
-                      item.id
-                    }
-                  >
-                    <article className="p-6 transition-colors duration-200 hover:bg-base-200/40">
-                      {/* =====================================
-                          CABEÇALHO DO ITEM
-                      ====================================== */}
-
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="badge badge-primary badge-outline badge-sm">
-                              Item{" "}
-                              {index + 1}
-                            </span>
-
-                            {item.supply_status && (
-                              <ItemStatusBadge
-                                value={
-                                  item.supply_status
-                                }
-                              />
-                            )}
-
-                            {item.authorization_status && (
-                              <span className="badge badge-warning badge-outline badge-sm">
-                                Autorização:{" "}
-                                {
-                                  item.authorization_status
-                                }
-                              </span>
-                            )}
-
-                            {item.delivery_status && (
-                              <span className="badge badge-info badge-outline badge-sm">
-                                Entrega:{" "}
-                                {
-                                  item.delivery_status
-                                }
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="mt-3 text-base font-semibold leading-6 text-base-content">
-                            {
-                              item.insumo
-                            }
-                          </h3>
-                        </div>
-
-                        {/* QUANTIDADE */}
-
-                        <div className="rounded-box border border-base-300 bg-base-200/50 px-5 py-3 xl:min-w-[170px]">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-base-content/40">
-                            Quantidade
-                          </p>
-
-                          <p className="mt-1 text-sm font-semibold text-base-content">
-                            {formatQuantity(
-                              item.quantity
-                            )}{" "}
-                            {item.unit ??
-                              ""}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* =====================================
-                          DADOS PRINCIPAIS
-                      ====================================== */}
-
-                      <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-                        <Detail
-                          icon={
-                            ShoppingCart
-                          }
-                          label="Pedido"
-                          value={
-                            item.order_number ??
-                            "Ainda não gerado"
-                          }
-                        />
-
-                        <Detail
-                          icon={
-                            Store
-                          }
-                          label="Fornecedor"
-                          value={
-                            item.supplier_name ??
-                            "Ainda não definido"
-                          }
-                        />
-
-                        <Detail
-                          icon={
-                            Truck
-                          }
-                          label="Previsão"
-                          value={
-                            formatDate(
-                              forecast
-                            )
-                          }
-                        />
-
-                        <Detail
-                          icon={
-                            CheckCircle2
-                          }
-                          label="Entrega"
-                          value={
-                            item.delivery_date
-                              ? formatDate(
-                                  item.delivery_date
-                                )
-                              : "Ainda não entregue"
-                          }
-                        />
-                      </div>
-
-                      {/* =====================================
-                          DATAS DE PROCESSO
-                      ====================================== */}
-
-                      {(item.supply_status_date ||
-                        item.authorization_date) && (
-                        <MotionReveal
-                          delay={0.08}
-                        >
-                          <div className="mt-6 grid gap-4 rounded-box border border-base-300 bg-base-200/35 p-4 sm:grid-cols-2">
-                            <SimpleDetail
-                              label="Data status suprimentos"
-                              value={
-                                formatDate(
-                                  item.supply_status_date
-                                )
-                              }
-                            />
-
-                            <SimpleDetail
-                              label="Data autorização"
-                              value={
-                                formatDate(
-                                  item.authorization_date
-                                )
-                              }
-                            />
-                          </div>
-                        </MotionReveal>
-                      )}
-
-                      {/* =====================================
-                          ENTREGA / NF
-                      ====================================== */}
-
-                      {(item.received_by ||
-                        item.invoice_number ||
-                        item.delivery_status) && (
-                        <MotionReveal
-                          delay={0.1}
-                        >
-                          <div className="mt-4 grid gap-4 rounded-box border border-base-300 bg-base-200/35 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                            <SimpleDetail
-                              label="Status da entrega"
-                              value={
-                                item.delivery_status ??
-                                "-"
-                              }
-                            />
-
-                            <SimpleDetail
-                              label="Recebido por"
-                              value={
-                                item.received_by ??
-                                "-"
-                              }
-                            />
-
-                            <SimpleDetail
-                              label="Nota Fiscal"
-                              value={
-                                item.invoice_number ??
-                                "-"
-                              }
-                            />
-                          </div>
-                        </MotionReveal>
-                      )}
-
-                      {/* =====================================
-                          FORNECEDOR
-                      ====================================== */}
-
-                      {(item.supplier_contact ||
-                        item.supplier_phone) && (
-                        <MotionReveal
-                          delay={0.12}
-                        >
-                          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t border-base-300 pt-4 text-xs text-base-content/55">
-                            {item.supplier_contact && (
-                              <span>
-                                Contato:{" "}
-                                <strong className="font-semibold text-base-content">
-                                  {
-                                    item.supplier_contact
-                                  }
-                                </strong>
-                              </span>
-                            )}
-
-                            {item.supplier_phone && (
-                              <span>
-                                Telefone:{" "}
-                                <strong className="font-semibold text-base-content">
-                                  {
-                                    item.supplier_phone
-                                  }
-                                </strong>
-                              </span>
-                            )}
-                          </div>
-                        </MotionReveal>
-                      )}
-                    </article>
-                  </MotionListItem>
-                );
-              }
-            )}
-          </MotionList>
-        </section>
-      </MotionReveal>
-    </MotionPage>
+          );
+        }
+      )}
+    </div>
   );
+}
+
+// ============================================================
+// TIMELINE STEP
+// ============================================================
+
+function getCurrentStep(
+  status:
+    string
+) {
+  switch (
+    status
+  ) {
+    case "Em cotação":
+      return 1;
+
+    case "Em aprovação":
+      return 2;
+
+    case "Compra realizada":
+    case "Compra via cartão":
+      return 3;
+
+    case "Disponível para retirada":
+    case "Em processo de entrega":
+      return 4;
+
+    case "Entregue":
+      return 5;
+
+    default:
+      return 0;
+  }
 }
 
 // ============================================================
@@ -815,102 +1377,75 @@ export default async function FinanceSiengeRequestDetailsPage({
 // ============================================================
 
 function InfoCard({
-  icon: Icon,
+  icon:
+    Icon,
   label,
   value,
 }: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="card h-full border border-base-300 bg-base-100">
-      <div className="card-body p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-box bg-base-200 text-base-content/55">
-          <Icon
-            size={18}
-          />
-        </div>
+  icon:
+    ElementType;
 
-        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-base-content/40">
-          {label}
-        </p>
-
-        <p className="break-words text-sm font-semibold text-base-content">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// MINI MÉTRICA
-// ============================================================
-
-function MiniMetric({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-
-  label: string;
+  label:
+    string;
 
   value:
-    | number
-    | string;
+    string;
 }) {
   return (
-    <div className="card h-full border border-base-300 bg-base-100">
-      <div className="card-body flex-row items-center gap-4 p-5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-box bg-primary/10 text-primary">
-          <Icon
-            size={19}
-          />
-        </div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <Icon
+        size={
+          18
+        }
+        className="text-slate-400"
+      />
 
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-base-content/40">
-            {label}
-          </p>
+      <p className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
 
-          <p className="mt-1 text-xl font-semibold text-base-content">
-            {value}
-          </p>
-        </div>
-      </div>
+      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+        {value}
+      </p>
     </div>
   );
 }
 
 // ============================================================
-// DETALHE
+// DATA FIELD
 // ============================================================
 
-function Detail({
-  icon: Icon,
+function DataField({
+  icon:
+    Icon,
   label,
   value,
 }: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
+  icon:
+    ElementType;
+
+  label:
+    string;
+
+  value:
+    string;
 }) {
   return (
     <div className="flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-box bg-base-200 text-base-content/45">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400">
         <Icon
-          size={16}
+          size={
+            15
+          }
         />
       </div>
 
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-base-content/40">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.07em] text-slate-400">
           {label}
         </p>
 
-        <p className="mt-1 break-words text-xs font-semibold text-base-content/75">
+        <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
           {value}
         </p>
       </div>
@@ -919,115 +1454,42 @@ function Detail({
 }
 
 // ============================================================
-// DETALHE SIMPLES
+// ITEM BADGE
 // ============================================================
 
-function SimpleDetail({
-  label,
-  value,
+function ItemBadge({
+  children,
 }: {
-  label: string;
-  value: string;
+  children:
+    ReactNode;
 }) {
   return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-base-content/40">
-        {label}
-      </p>
-
-      <p className="mt-1 break-words text-xs font-semibold text-base-content/75">
-        {value}
-      </p>
-    </div>
+    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+      {children}
+    </span>
   );
 }
 
 // ============================================================
-// BADGE DE STATUS DO ITEM
-// ============================================================
-
-function ItemStatusBadge({
-  value,
-}: {
-  value: string;
-}) {
-  const normalized =
-    value
-      .trim()
-      .toUpperCase();
-
-  let style =
-    "badge-ghost";
-
-  if (
-    normalized ===
-    "COMPRADO"
-  ) {
-    style =
-      "badge-success";
-  } else if (
-    normalized.includes(
-      "APROVA"
-    )
-  ) {
-    style =
-      "badge-warning";
-  } else if (
-    normalized.includes(
-      "COTA"
-    )
-  ) {
-    style =
-      "badge-warning badge-outline";
-  } else if (
-    normalized ===
-      "RETIRAR" ||
-    normalized ===
-      "ENTREGAR"
-  ) {
-    style =
-      "badge-info";
-  } else if (
-    normalized ===
-      "CARTAO" ||
-    normalized ===
-      "CARTÃO"
-  ) {
-    style =
-      "badge-secondary";
-  }
-
-  return (
-    <MotionStatus>
-      <span
-        className={[
-          "badge badge-sm",
-          style,
-        ].join(" ")}
-      >
-        {value}
-      </span>
-    </MotionStatus>
-  );
-}
-
-// ============================================================
-// BADGE STATUS DA SC
+// STATUS BADGE
 // ============================================================
 
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status:
+    string;
 }) {
   return (
     <span
       className={[
-        "badge",
+        "rounded-full border px-3 py-1 text-xs font-semibold",
         getStatusStyle(
           status
         ),
-      ].join(" ")}
+      ].join(
+        " "
+      )}
     >
       {status}
     </span>
@@ -1035,29 +1497,30 @@ function StatusBadge({
 }
 
 function getStatusStyle(
-  status: string
+  status:
+    string
 ) {
   switch (
     status
   ) {
     case "Entregue":
-      return "badge-success";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
 
     case "Disponível para retirada":
     case "Em processo de entrega":
-      return "badge-info";
+      return "border-blue-200 bg-blue-50 text-blue-700";
 
     case "Compra realizada":
     case "Compra via cartão":
-      return "badge-secondary";
+      return "border-violet-200 bg-violet-50 text-violet-700";
 
     case "Em aprovação":
-      return "badge-warning";
+      return "border-amber-200 bg-amber-50 text-amber-700";
 
     case "Em cotação":
-      return "badge-warning badge-outline";
+      return "border-orange-200 bg-orange-50 text-orange-700";
 
     default:
-      return "badge-ghost";
+      return "border-slate-200 bg-slate-50 text-slate-600";
   }
 }

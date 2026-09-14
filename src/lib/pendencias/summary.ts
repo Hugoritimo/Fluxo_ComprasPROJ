@@ -25,6 +25,17 @@ export type PendingSummary = {
 
         deliveries: number;
 
+        // ====================================================
+        // NOVO:
+        // CONFIRMAÇÃO DE RECEBIMENTO PELO SOLICITANTE
+        // ====================================================
+
+        receipts: number;
+
+        receiptCritical: number;
+
+        receiptAttention: number;
+
         unmatched: number;
 
         alerts: number;
@@ -36,6 +47,10 @@ export type PendingSummary = {
 
     generatedAt: string;
 };
+
+// ============================================================
+// SLA
+// ============================================================
 
 export type PendingSlaRow = {
     item_id: string;
@@ -57,6 +72,81 @@ export type PendingSlaRow = {
     | null;
 };
 
+// ============================================================
+// ITEM SIENGE PARA CONFIRMAÇÃO DE ENTREGA
+// ============================================================
+
+export type PendingReceiptItemRow = {
+    id: string;
+
+    sc_number:
+    | string
+    | null;
+
+    order_number:
+    | string
+    | null;
+
+    requester_profile_id:
+    | string
+    | null;
+
+    initial_delivery_forecast:
+    | string
+    | null;
+
+    delivery_or_pickup_forecast:
+    | string
+    | null;
+
+    // ========================================================
+    // Status vindo da importação do Sienge.
+    //
+    // IMPORTANTE:
+    // ele NÃO substitui a confirmação do solicitante.
+    // ========================================================
+
+    delivery_status:
+    | string
+    | null;
+};
+
+// ============================================================
+// CONFIRMAÇÃO DO SOLICITANTE
+// ============================================================
+
+export type PendingDeliveryConfirmationRow = {
+    item_id: string;
+
+    requester_profile_id:
+    | string
+    | null;
+
+    delivery_status:
+    | string
+    | null;
+
+    delivery_date?:
+    | string
+    | null;
+
+    received_by?:
+    | string
+    | null;
+
+    invoice_number?:
+    | string
+    | null;
+
+    updated_at?:
+    | string
+    | null;
+};
+
+// ============================================================
+// USUÁRIO SIENGE
+// ============================================================
+
 export type PendingSiengeUserRow = {
     requester_sienge_username:
     | string
@@ -66,6 +156,10 @@ export type PendingSiengeUserRow = {
     | string
     | null;
 };
+
+// ============================================================
+// NOTIFICAÇÃO
+// ============================================================
 
 export type PendingNotificationRow = {
     id?: string;
@@ -83,10 +177,14 @@ export type PendingNotificationRow = {
 // BUILD SUMMARY
 // ============================================================
 //
-// Essa função é a REGRA ÚNICA.
+// Essa função continua sendo a REGRA ÚNICA.
 //
-// Dashboard, API e futuramente a Central de Pendências podem
-// usar exatamente a mesma lógica.
+// Dashboard, API, Sidebar e Central de Pendências devem usar
+// exatamente a mesma lógica.
+//
+// Os novos arrays são opcionais para manter compatibilidade
+// com chamadas antigas de buildPendingSummary() durante a
+// transição.
 // ============================================================
 
 export function buildPendingSummary({
@@ -94,6 +192,8 @@ export function buildPendingSummary({
     siengeUsers,
     notifications,
     canFinance,
+    receiptItems = [],
+    deliveryConfirmations = [],
 }: {
     slaRows: PendingSlaRow[];
 
@@ -102,6 +202,10 @@ export function buildPendingSummary({
     notifications: PendingNotificationRow[];
 
     canFinance: boolean;
+
+    receiptItems?: PendingReceiptItemRow[];
+
+    deliveryConfirmations?: PendingDeliveryConfirmationRow[];
 }): PendingSummary {
     // ==========================================================
     // SLA VENCIDO
@@ -158,11 +262,17 @@ export function buildPendingSummary({
         );
 
     // ==========================================================
-    // ENTREGA VENCIDA
+    // DATA DE NEGÓCIO
     // ==========================================================
 
     const today =
         getTodayIsoDate();
+
+    // ==========================================================
+    // ENTREGA VENCIDA
+    //
+    // Esse é o atraso operacional vindo do processo/Sienge.
+    // ==========================================================
 
     const overdueDeliveryScs =
         new Set(
@@ -191,7 +301,9 @@ export function buildPendingSummary({
                                     .delivery_or_pickup_forecast
                             );
 
-                        if (!forecast) {
+                        if (
+                            !forecast
+                        ) {
                             return false;
                         }
 
@@ -209,6 +321,170 @@ export function buildPendingSummary({
                         row.item_id
                 )
         );
+
+    // ==========================================================
+    // CONFIRMAÇÃO DO RECEBIMENTO PELO SOLICITANTE
+    // ==========================================================
+    //
+    // REGRA:
+    //
+    // 1. Só analisamos item que já possui PEDIDO.
+    //
+    // 2. Somente a tabela
+    //    sienge_requester_delivery_confirmations
+    //    encerra essa pendência.
+    //
+    // 3. Status "Entregue" vindo do Sienge NÃO encerra
+    //    automaticamente a confirmação do solicitante.
+    //
+    // 4. Previsão vencida:
+    //    CRÍTICA.
+    //
+    // 5. Previsão para hoje:
+    //    ATENÇÃO.
+    //
+    // 6. Se o Sienge já disser "Entregue", mas o solicitante
+    //    ainda não confirmou:
+    //    ATENÇÃO.
+    //
+    // 7. Previsão futura:
+    //    ainda não gera pendência.
+    //
+    // 8. Sem previsão:
+    //    não gera pendência por enquanto, exceto quando o
+    //    próprio Sienge já sinaliza entrega.
+    // ==========================================================
+
+    const confirmationByItem =
+        new Map<
+            string,
+            PendingDeliveryConfirmationRow
+        >(
+            deliveryConfirmations.map(
+                (
+                    confirmation
+                ) => [
+                        String(
+                            confirmation.item_id
+                        ),
+
+                        confirmation,
+                    ]
+            )
+        );
+
+    const receiptCriticalItems =
+        new Set<string>();
+
+    const receiptAttentionItems =
+        new Set<string>();
+
+    for (
+        const item
+        of receiptItems
+    ) {
+        // ======================================================
+        // SEM PEDIDO:
+        // ainda não existe obrigação de confirmar recebimento.
+        // ======================================================
+
+        if (
+            !item.order_number
+        ) {
+            continue;
+        }
+
+        const confirmation =
+            confirmationByItem.get(
+                String(
+                    item.id
+                )
+            );
+
+        // ======================================================
+        // JÁ CONFIRMADO PELO SOLICITANTE
+        // ======================================================
+
+        if (
+            confirmation
+                ?.delivery_status ===
+            "Entregue"
+        ) {
+            continue;
+        }
+
+        const forecastValue =
+            item
+                .delivery_or_pickup_forecast ??
+            item
+                .initial_delivery_forecast;
+
+        const forecast =
+            forecastValue
+                ? extractIsoDate(
+                    forecastValue
+                )
+                : null;
+
+        // ======================================================
+        // PREVISÃO VENCIDA
+        // ======================================================
+
+        if (
+            forecast &&
+            forecast <
+            today
+        ) {
+            receiptCriticalItems.add(
+                String(
+                    item.id
+                )
+            );
+
+            continue;
+        }
+
+        // ======================================================
+        // PREVISÃO É HOJE
+        // ======================================================
+
+        if (
+            forecast ===
+            today
+        ) {
+            receiptAttentionItems.add(
+                String(
+                    item.id
+                )
+            );
+
+            continue;
+        }
+
+        // ======================================================
+        // SIENGE DIZ QUE FOI ENTREGUE,
+        // MAS SOLICITANTE AINDA NÃO CONFIRMOU
+        // ======================================================
+
+        if (
+            item.delivery_status ===
+            "Entregue"
+        ) {
+            receiptAttentionItems.add(
+                String(
+                    item.id
+                )
+            );
+        }
+    }
+
+    // ==========================================================
+    // TOTAL DE RECEBIMENTOS PENDENTES
+    // ==========================================================
+
+    const receipts =
+        receiptCriticalItems.size +
+        receiptAttentionItems.size;
 
     // ==========================================================
     // USUÁRIOS SIENGE SEM VÍNCULO
@@ -283,34 +559,35 @@ export function buildPendingSummary({
     // TOTAL
     // ==========================================================
     //
-    // "total" representa quantidade de problemas operacionais.
+    // Uma mesma SC pode possuir múltiplos tipos de problema.
     //
-    // Uma SC pode possuir, por exemplo:
-    // - SLA vencido
-    // - entrega vencida
+    // Exemplo:
     //
-    // São duas pendências diferentes e permanecem contabilizadas
-    // separadamente.
+    // - SLA vencido;
+    // - entrega vencida;
+    // - recebimento ainda não confirmado.
+    //
+    // São responsabilidades diferentes e permanecem
+    // contabilizadas separadamente.
     // ==========================================================
 
     const total =
         overdueScs.size +
         warningScs.size +
         overdueDeliveryScs.size +
+        receiptCriticalItems.size +
+        receiptAttentionItems.size +
         unmatchedUsers.size +
         alerts;
 
     // ==========================================================
     // CRÍTICAS
     // ==========================================================
-    //
-    // Agora erros de sistema/notificação também entram como
-    // criticidade, o que não acontecia na implementação anterior.
-    // ==========================================================
 
     const critical =
         overdueScs.size +
         overdueDeliveryScs.size +
+        receiptCriticalItems.size +
         alertErrors;
 
     // ==========================================================
@@ -319,6 +596,7 @@ export function buildPendingSummary({
 
     const attention =
         warningScs.size +
+        receiptAttentionItems.size +
         unmatchedUsers.size +
         alertWarnings;
 
@@ -359,6 +637,14 @@ export function buildPendingSummary({
             deliveries:
                 overdueDeliveryScs.size,
 
+            receipts,
+
+            receiptCritical:
+                receiptCriticalItems.size,
+
+            receiptAttention:
+                receiptAttentionItems.size,
+
             unmatched:
                 unmatchedUsers.size,
 
@@ -378,10 +664,16 @@ export function buildPendingSummary({
 // CONSULTA COMPLETA
 // ============================================================
 //
-// Usada pela API.
+// Usada principalmente pela API do contador.
 //
-// Outras Server Components podem usar buildPendingSummary()
-// quando já tiverem os dados carregados.
+// SEGURANÇA:
+// para usuário comum, sienge_purchase_items é explicitamente
+// filtrado por requester_profile_id.
+//
+// Depois usamos os IDs desses itens para limitar também os
+// registros de SLA.
+//
+// Assim "Minhas Pendências" não depende exclusivamente da RLS.
 // ============================================================
 
 export async function getPendingSummary({
@@ -406,16 +698,82 @@ export async function getPendingSummary({
             )
             .select(
                 `
-        item_id,
-        sc_number,
-        delivery_or_pickup_forecast,
-        tracking_status,
-        sla_status
-        `
+                item_id,
+                sc_number,
+                delivery_or_pickup_forecast,
+                tracking_status,
+                sla_status
+                `
             );
 
     // ==========================================================
-    // USUÁRIOS SIENGE
+    // ITENS SIENGE
+    //
+    // Além de alimentar a nova regra de recebimento, essa
+    // consulta também fornece o escopo explícito dos itens do
+    // usuário comum.
+    // ==========================================================
+
+    let receiptItemsQuery =
+        supabase
+            .from(
+                "sienge_purchase_items"
+            )
+            .select(
+                `
+                id,
+                sc_number,
+                order_number,
+                requester_profile_id,
+                initial_delivery_forecast,
+                delivery_or_pickup_forecast,
+                delivery_status
+                `
+            );
+
+    if (
+        !canFinance
+    ) {
+        receiptItemsQuery =
+            receiptItemsQuery.eq(
+                "requester_profile_id",
+                userId
+            );
+    }
+
+    // ==========================================================
+    // CONFIRMAÇÕES DO SOLICITANTE
+    // ==========================================================
+
+    let confirmationsQuery =
+        supabase
+            .from(
+                "sienge_requester_delivery_confirmations"
+            )
+            .select(
+                `
+                item_id,
+                requester_profile_id,
+                delivery_status,
+                delivery_date,
+                received_by,
+                invoice_number,
+                updated_at
+                `
+            );
+
+    if (
+        !canFinance
+    ) {
+        confirmationsQuery =
+            confirmationsQuery.eq(
+                "requester_profile_id",
+                userId
+            );
+    }
+
+    // ==========================================================
+    // USUÁRIOS SIENGE SEM VÍNCULO
     // ==========================================================
 
     const siengeUsersPromise =
@@ -426,9 +784,9 @@ export async function getPendingSummary({
                 )
                 .select(
                     `
-            requester_sienge_username,
-            requester_profile_id
-            `
+                      requester_sienge_username,
+                      requester_profile_id
+                      `
                 )
                 .not(
                     "requester_sienge_username",
@@ -456,10 +814,10 @@ export async function getPendingSummary({
             )
             .select(
                 `
-        id,
-        level,
-        read_at
-        `
+                id,
+                level,
+                read_at
+                `
             )
             .is(
                 "read_at",
@@ -473,7 +831,9 @@ export async function getPendingSummary({
                 ]
             );
 
-    if (!canFinance) {
+    if (
+        !canFinance
+    ) {
         alertsQuery =
             alertsQuery.eq(
                 "user_id",
@@ -487,11 +847,15 @@ export async function getPendingSummary({
 
     const [
         slaResult,
+        receiptItemsResult,
+        confirmationsResult,
         siengeUsersResult,
         alertsResult,
     ] =
         await Promise.all([
             slaPromise,
+            receiptItemsQuery,
+            confirmationsQuery,
             siengeUsersPromise,
             alertsQuery,
         ]);
@@ -506,6 +870,24 @@ export async function getPendingSummary({
         console.error(
             "Erro ao calcular SLA da Central de Pendências:",
             slaResult.error
+        );
+    }
+
+    if (
+        receiptItemsResult.error
+    ) {
+        console.error(
+            "Erro ao calcular confirmações pendentes de recebimento:",
+            receiptItemsResult.error
+        );
+    }
+
+    if (
+        confirmationsResult.error
+    ) {
+        console.error(
+            "Erro ao carregar confirmações de recebimento:",
+            confirmationsResult.error
         );
     }
 
@@ -528,16 +910,65 @@ export async function getPendingSummary({
     }
 
     // ==========================================================
+    // DADOS DOS ITENS
+    // ==========================================================
+
+    const receiptItems =
+        (
+            receiptItemsResult.data ??
+            []
+        ) as PendingReceiptItemRow[];
+
+    // ==========================================================
+    // SEGURANÇA EXTRA DO SLA
+    // ==========================================================
+    //
+    // Para Finance/Admin/Superadmin:
+    // todos os registros permitidos pela RLS.
+    //
+    // Para colaborador:
+    // somente item cujo ID existe na consulta explicitamente
+    // filtrada por requester_profile_id = userId.
+    // ==========================================================
+
+    const allSlaRows =
+        (
+            slaResult.data ??
+            []
+        ) as PendingSlaRow[];
+
+    const scopedSlaRows =
+        canFinance
+            ? allSlaRows
+            : filterSlaRowsByOwnedItems(
+                allSlaRows,
+                receiptItems
+            );
+
+    // ==========================================================
+    // EVITAR FALSO POSITIVO
+    // ==========================================================
+    //
+    // Se a tabela de confirmações estiver indisponível por
+    // qualquer motivo, NÃO contabilizamos recebimentos
+    // pendentes.
+    //
+    // Caso contrário, a ausência da tabela poderia transformar
+    // todos os pedidos em "não confirmados".
+    // ==========================================================
+
+    const canCalculateReceipts =
+        !receiptItemsResult.error &&
+        !confirmationsResult.error;
+
+    // ==========================================================
     // BUILD
     // ==========================================================
 
     return buildPendingSummary(
         {
             slaRows:
-                (
-                    slaResult.data ??
-                    []
-                ) as PendingSlaRow[],
+                scopedSlaRows,
 
             siengeUsers:
                 (
@@ -551,8 +982,53 @@ export async function getPendingSummary({
                     []
                 ) as PendingNotificationRow[],
 
+            receiptItems:
+                canCalculateReceipts
+                    ? receiptItems
+                    : [],
+
+            deliveryConfirmations:
+                canCalculateReceipts
+                    ? (
+                        confirmationsResult.data ??
+                        []
+                    ) as PendingDeliveryConfirmationRow[]
+                    : [],
+
             canFinance,
         }
+    );
+}
+
+// ============================================================
+// FILTRAR SLA PELOS ITENS DO SOLICITANTE
+// ============================================================
+
+function filterSlaRowsByOwnedItems(
+    slaRows: PendingSlaRow[],
+    ownedItems: PendingReceiptItemRow[]
+) {
+    const allowedItemIds =
+        new Set(
+            ownedItems.map(
+                (
+                    item
+                ) =>
+                    String(
+                        item.id
+                    )
+            )
+        );
+
+    return slaRows.filter(
+        (
+            row
+        ) =>
+            allowedItemIds.has(
+                String(
+                    row.item_id
+                )
+            )
     );
 }
 

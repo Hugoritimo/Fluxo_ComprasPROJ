@@ -56,6 +56,7 @@ export type PendingFilter =
   | "atencao"
   | "sla"
   | "entrega"
+  | "recebimento"
   | "usuarios"
   | "alertas";
 
@@ -63,6 +64,7 @@ export type PendingType =
   | "sla"
   | "atencao"
   | "entrega"
+  | "recebimento"
   | "usuarios"
   | "alertas";
 
@@ -75,6 +77,7 @@ export type PendingIconKey =
   | "clock"
   | "warning"
   | "delivery"
+  | "receipt"
   | "user"
   | "bell";
 
@@ -167,6 +170,9 @@ const pendingIcons: Record<
   delivery:
     PackageCheck,
 
+  receipt:
+    CheckCircle2,
+
   user:
     UserRoundX,
 
@@ -228,10 +234,6 @@ export default function PendenciasClient({
           (
             entry
           ) => {
-            // ===============================================
-            // CATEGORY
-            // ===============================================
-
             if (
               filter ===
                 "criticas" &&
@@ -270,6 +272,15 @@ export default function PendenciasClient({
 
             if (
               filter ===
+                "recebimento" &&
+              entry.type !==
+                "recebimento"
+            ) {
+              return false;
+            }
+
+            if (
+              filter ===
                 "usuarios" &&
               entry.type !==
                 "usuarios"
@@ -285,10 +296,6 @@ export default function PendenciasClient({
             ) {
               return false;
             }
-
-            // ===============================================
-            // SEARCH
-            // ===============================================
 
             if (
               normalizedQuery &&
@@ -447,10 +454,6 @@ export default function PendenciasClient({
   return (
     <>
       <main className="projeta-page mx-auto max-w-[1580px]">
-        {/* ===================================================
-            HEADER
-        ==================================================== */}
-
         <MotionReveal
           distance={
             10
@@ -559,7 +562,7 @@ export default function PendenciasClient({
         </MotionReveal>
 
         {/* ===================================================
-            COMMAND SUMMARY
+            RESUMO
         ==================================================== */}
 
         <MotionStagger
@@ -642,7 +645,7 @@ export default function PendenciasClient({
         </MotionStagger>
 
         {/* ===================================================
-            FILTER BAR
+            FILTROS
         ==================================================== */}
 
         <MotionReveal
@@ -651,8 +654,6 @@ export default function PendenciasClient({
           }
         >
           <section className="mt-5 overflow-hidden rounded-[20px] border border-base-300/80 bg-base-100 shadow-[var(--projeta-shadow-sm)]">
-            {/* SEARCH */}
-
             <div className="flex flex-col gap-3 border-b border-base-300/60 p-3 xl:flex-row xl:items-center">
               <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-base-300 bg-base-200/25 px-3 transition focus-within:border-primary/25 focus-within:bg-base-100 focus-within:ring-4 focus-within:ring-primary/[0.035]">
                 <Search
@@ -719,8 +720,6 @@ export default function PendenciasClient({
                 </strong>
               </div>
             </div>
-
-            {/* TABS */}
 
             <div className="overflow-x-auto px-3 py-2">
               <div className="flex min-w-max gap-1">
@@ -811,6 +810,36 @@ export default function PendenciasClient({
                   }
                 />
 
+                {/* ===========================================
+                    NOVO — RECEBIMENTOS
+                ============================================ */}
+
+                <FilterButton
+                  label="Recebimentos"
+                  count={
+                    summary.categories.receipts
+                  }
+                  active={
+                    filter ===
+                    "recebimento"
+                  }
+                  tone={
+                    summary.categories.receiptCritical >
+                    0
+                      ? "error"
+                      : summary.categories.receiptAttention >
+                          0
+                        ? "warning"
+                        : "neutral"
+                  }
+                  onClick={
+                    () =>
+                      setFilter(
+                        "recebimento"
+                      )
+                  }
+                />
+
                 {canFinance && (
                   <FilterButton
                     label="Vínculos"
@@ -852,20 +881,8 @@ export default function PendenciasClient({
         </MotionReveal>
 
         {/* ===================================================
-            QUEUE
+            FILA
         ==================================================== */}
-        {/*
-         * IMPORTANTE:
-         *
-         * A fila NÃO usa MotionReveal, MotionList ou
-         * MotionListItem.
-         *
-         * Ela precisa aparecer imediatamente quando os dados
-         * já estão disponíveis.
-         *
-         * Isso evita registros presos em opacity: 0 por falha
-         * ou atraso do IntersectionObserver.
-         */}
 
         <section className="mt-5 overflow-hidden rounded-[22px] border border-base-300 bg-base-100 shadow-[var(--projeta-shadow-sm)]">
           <div className="flex items-center justify-between gap-4 border-b border-base-300/70 px-5 py-5 sm:px-6">
@@ -987,10 +1004,6 @@ export default function PendenciasClient({
           )}
         </section>
 
-        {/* ===================================================
-            FOOTER
-        ==================================================== */}
-
         <footer className="mt-7 flex flex-col gap-2 border-t border-base-300/60 py-5 text-[8px] font-[550] text-base-content/25 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <span className="status status-success status-xs" />
@@ -1006,10 +1019,6 @@ export default function PendenciasClient({
           </span>
         </footer>
       </main>
-
-      {/* =====================================================
-          DRAWER
-      ====================================================== */}
 
       <PendingDrawer
         entry={
@@ -1298,16 +1307,6 @@ function QueueGroup({
         </span>
       </div>
 
-      {/*
-       * LISTA ESTÁTICA
-       *
-       * Sem MotionList.
-       * Sem MotionListItem.
-       * Sem content-visibility.
-       *
-       * Os registros sempre entram no DOM visíveis.
-       */}
-
       <div className="divide-y divide-base-300/60">
         {entries.map(
           (
@@ -1489,10 +1488,6 @@ function PendingDrawer({
   const reduceMotion =
     useReducedMotion();
 
-  // =========================================================
-  // ESC + SCROLL LOCK
-  // =========================================================
-
   useEffect(
     () => {
       if (
@@ -1541,16 +1536,10 @@ function PendingDrawer({
     ]
   );
 
-  // =========================================================
-  // RENDER
-  // =========================================================
-
   return (
     <AnimatePresence>
       {entry && (
         <>
-          {/* OVERLAY */}
-
           <motion.button
             type="button"
             aria-label="Fechar painel"
@@ -1581,8 +1570,6 @@ function PendingDrawer({
             }}
             className="fixed inset-0 z-[90] cursor-default bg-black/25 backdrop-blur-[2px]"
           />
-
-          {/* PANEL */}
 
           <motion.aside
             initial={
@@ -1664,8 +1651,6 @@ function PendingDrawerContent({
 
   return (
     <>
-      {/* HEADER */}
-
       <div className="border-b border-base-300/70 px-5 py-5 sm:px-6">
         <div className="flex items-start justify-between gap-4">
           <div
@@ -1731,11 +1716,7 @@ function PendingDrawerContent({
         </div>
       </div>
 
-      {/* CONTENT */}
-
       <div className="projeta-sidebar-scroll flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-        {/* VALUE */}
-
         {entry.value && (
           <div
             className={[
@@ -1784,8 +1765,6 @@ function PendingDrawerContent({
           </div>
         )}
 
-        {/* DETAILS */}
-
         <div>
           <p className="projeta-section-label">
             Informações da ocorrência
@@ -1814,8 +1793,6 @@ function PendingDrawerContent({
           </div>
         </div>
 
-        {/* CONTEXT */}
-
         {(entry.meta ||
           entry.secondary) && (
           <div className="mt-6">
@@ -1841,8 +1818,6 @@ function PendingDrawerContent({
           </div>
         )}
       </div>
-
-      {/* FOOTER */}
 
       <div className="border-t border-base-300 bg-base-100 p-4 sm:p-5">
         <Link
@@ -2021,6 +1996,9 @@ function getTypeLabel(
 
     case "entrega":
       return "Entrega";
+
+    case "recebimento":
+      return "Recebimento";
 
     case "usuarios":
       return "Vínculo";

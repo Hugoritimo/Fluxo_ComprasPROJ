@@ -9,9 +9,12 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
+  Clock3,
   FileSpreadsheet,
+  Link2,
   LoaderCircle,
   RefreshCw,
+  TriangleAlert,
   Upload,
   UserRoundX,
 } from "lucide-react";
@@ -23,8 +26,22 @@ import {
 import {
   importSiengeFile,
   previewSiengeFile,
+  type SiengeImportResult,
   type SiengePreviewResult,
 } from "./actions";
+
+// ============================================================
+// TIPOS
+// ============================================================
+
+type ImportResult =
+  NonNullable<
+    SiengeImportResult["result"]
+  >;
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 
 export default function SiengeImportForm() {
   const router =
@@ -51,19 +68,21 @@ export default function SiengeImportForm() {
       NonNullable<
         SiengePreviewResult["preview"]
       > | null
-    >(null);
-
-  const [
-    error,
-    setError,
-  ] =
-    useState<string | null>(
+    >(
       null
     );
 
   const [
-    success,
-    setSuccess,
+    importResult,
+    setImportResult,
+  ] =
+    useState<ImportResult | null>(
+      null
+    );
+
+  const [
+    error,
+    setError,
   ] =
     useState<string | null>(
       null
@@ -76,7 +95,7 @@ export default function SiengeImportForm() {
     useTransition();
 
   // ==========================================================
-  // SELEÇÃO
+  // SELEÇÃO DE ARQUIVO
   // ==========================================================
 
   function handleFileChange(
@@ -95,11 +114,11 @@ export default function SiengeImportForm() {
       null
     );
 
-    setError(
+    setImportResult(
       null
     );
 
-    setSuccess(
+    setError(
       null
     );
   }
@@ -109,7 +128,9 @@ export default function SiengeImportForm() {
   // ==========================================================
 
   function analyzeFile() {
-    if (!file) {
+    if (
+      !file
+    ) {
       setError(
         "Selecione o arquivo Excel do Sienge."
       );
@@ -121,7 +142,7 @@ export default function SiengeImportForm() {
       null
     );
 
-    setSuccess(
+    setImportResult(
       null
     );
 
@@ -160,7 +181,7 @@ export default function SiengeImportForm() {
   }
 
   // ==========================================================
-  // CONFIRMAR
+  // CONFIRMAR IMPORTAÇÃO
   // ==========================================================
 
   function confirmImport() {
@@ -175,7 +196,7 @@ export default function SiengeImportForm() {
       null
     );
 
-    setSuccess(
+    setImportResult(
       null
     );
 
@@ -206,11 +227,8 @@ export default function SiengeImportForm() {
           return;
         }
 
-        const imported =
-          result.result;
-
-        setSuccess(
-          `${imported.total} linhas processadas: ${imported.inserted} novas, ${imported.updated} atualizadas e ${imported.unchanged} sem alteração.`
+        setImportResult(
+          result.result
         );
 
         setPreview(
@@ -246,11 +264,11 @@ export default function SiengeImportForm() {
       null
     );
 
-    setError(
+    setImportResult(
       null
     );
 
-    setSuccess(
+    setError(
       null
     );
 
@@ -262,14 +280,22 @@ export default function SiengeImportForm() {
     }
   }
 
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
     <div className="space-y-5">
-      {/* ERRO */}
+      {/* =====================================================
+          ERRO
+      ====================================================== */}
 
       {error && (
         <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <AlertCircle
-            size={18}
+            size={
+              18
+            }
             className="mt-0.5 shrink-0"
           />
 
@@ -278,42 +304,37 @@ export default function SiengeImportForm() {
               Não foi possível continuar
             </p>
 
-            <p className="mt-1 text-xs">
+            <p className="mt-1 text-xs leading-5">
               {error}
             </p>
           </div>
         </div>
       )}
 
-      {/* SUCESSO */}
+      {/* =====================================================
+          RESULTADO DA IMPORTAÇÃO
+      ====================================================== */}
 
-      {success && (
-        <div className="flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-          <CheckCircle2
-            size={18}
-            className="mt-0.5 shrink-0"
-          />
-
-          <div>
-            <p className="font-semibold">
-              Importação concluída
-            </p>
-
-            <p className="mt-1 text-xs">
-              {success}
-            </p>
-          </div>
-        </div>
+      {importResult && (
+        <ImportSuccessPanel
+          result={
+            importResult
+          }
+        />
       )}
 
-      {/* UPLOAD */}
+      {/* =====================================================
+          UPLOAD
+      ====================================================== */}
 
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-[#AF1B1B] shadow-sm">
               <FileSpreadsheet
-                size={22}
+                size={
+                  22
+                }
               />
             </div>
 
@@ -323,7 +344,14 @@ export default function SiengeImportForm() {
               </p>
 
               <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-                Selecione a exportação ou a máscara de acompanhamento em formato XLSX.
+                Selecione a exportação ou a máscara de
+                acompanhamento em formato XLSX ou XLSM.
+              </p>
+
+              <p className="mt-2 max-w-2xl text-[11px] leading-5 text-slate-400">
+                Após a importação, o sistema também verifica
+                automaticamente se existem solicitações de cartão
+                aguardando vínculo com uma SC do Sienge.
               </p>
 
               {file && (
@@ -336,7 +364,9 @@ export default function SiengeImportForm() {
 
           <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
             <Upload
-              size={17}
+              size={
+                17
+              }
             />
 
             Selecionar arquivo
@@ -359,7 +389,9 @@ export default function SiengeImportForm() {
         </div>
       </div>
 
-      {/* AÇÃO DE ANÁLISE */}
+      {/* =====================================================
+          AÇÃO DE ANÁLISE
+      ====================================================== */}
 
       {!preview && (
         <button
@@ -375,12 +407,16 @@ export default function SiengeImportForm() {
         >
           {pending ? (
             <LoaderCircle
-              size={17}
+              size={
+                17
+              }
               className="animate-spin"
             />
           ) : (
             <FileSpreadsheet
-              size={17}
+              size={
+                17
+              }
             />
           )}
 
@@ -408,7 +444,9 @@ export default function SiengeImportForm() {
                 <p className="mt-1 text-xs text-slate-500">
                   Aba utilizada:{" "}
                   <strong>
-                    {preview.sheetName}
+                    {
+                      preview.sheetName
+                    }
                   </strong>
                 </p>
               </div>
@@ -424,14 +462,18 @@ export default function SiengeImportForm() {
                 className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"
               >
                 <RefreshCw
-                  size={14}
+                  size={
+                    14
+                  }
                 />
 
                 Trocar arquivo
               </button>
             </div>
 
-            {/* INDICADORES */}
+            {/* ===============================================
+                INDICADORES DA PRÉVIA
+            ================================================ */}
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <PreviewMetric
@@ -468,14 +510,18 @@ export default function SiengeImportForm() {
             </div>
           </div>
 
-          {/* USUÁRIOS NÃO VINCULADOS */}
+          {/* =================================================
+              USUÁRIOS NÃO VINCULADOS
+          ================================================== */}
 
           {preview.unmatchedUsers.length >
             0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <div className="flex gap-3">
                 <UserRoundX
-                  size={19}
+                  size={
+                    19
+                  }
                   className="mt-0.5 shrink-0 text-amber-700"
                 />
 
@@ -485,7 +531,10 @@ export default function SiengeImportForm() {
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-amber-800">
-                    A importação pode continuar. Esses pedidos ficarão aguardando vínculo com o usuário do sistema.
+                    A importação pode continuar normalmente. As
+                    solicitações desses usuários serão importadas,
+                    mas não aparecerão em "Meus Pedidos" até que
+                    o vínculo de usuário seja realizado.
                   </p>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -499,7 +548,9 @@ export default function SiengeImportForm() {
                           }
                           className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800"
                         >
-                          {username}
+                          {
+                            username
+                          }
                         </span>
                       )
                     )}
@@ -509,7 +560,9 @@ export default function SiengeImportForm() {
             </div>
           )}
 
-          {/* AMOSTRA */}
+          {/* =================================================
+              AMOSTRA
+          ================================================== */}
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
@@ -518,12 +571,13 @@ export default function SiengeImportForm() {
               </p>
 
               <p className="mt-1 text-xs text-slate-500">
-                Exibindo até 8 linhas do arquivo.
+                Exibindo até 8 linhas do arquivo antes da
+                confirmação.
               </p>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-[1000px] w-full text-left">
+              <table className="w-full min-w-[1000px] text-left">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
                   <tr>
                     <th className="px-4 py-3">
@@ -558,13 +612,13 @@ export default function SiengeImportForm() {
                       row
                     ) => (
                       <tr
-                        key={
-                          `${row.source_key}-${row.source_row}`
-                        }
+                        key={`${row.source_key}-${row.source_row}`}
                         className="text-xs text-slate-600"
                       >
                         <td className="whitespace-nowrap px-4 py-3 font-semibold text-[#AF1B1B]">
-                          {row.sc_number}
+                          {
+                            row.sc_number
+                          }
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-3">
@@ -573,7 +627,9 @@ export default function SiengeImportForm() {
                         </td>
 
                         <td className="max-w-[420px] px-4 py-3">
-                          {row.insumo}
+                          {
+                            row.insumo
+                          }
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-3">
@@ -598,7 +654,9 @@ export default function SiengeImportForm() {
             </div>
           </div>
 
-          {/* CONFIRMAÇÃO */}
+          {/* =================================================
+              CONFIRMAÇÃO
+          ================================================== */}
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
             <button
@@ -626,12 +684,16 @@ export default function SiengeImportForm() {
             >
               {pending ? (
                 <LoaderCircle
-                  size={17}
+                  size={
+                    17
+                  }
                   className="animate-spin"
                 />
               ) : (
                 <CheckCircle2
-                  size={17}
+                  size={
+                    17
+                  }
                 />
               )}
 
@@ -645,7 +707,334 @@ export default function SiengeImportForm() {
 }
 
 // ============================================================
-// MÉTRICA
+// RESULTADO FINAL DA IMPORTAÇÃO
+// ============================================================
+
+function ImportSuccessPanel({
+  result,
+}: {
+  result:
+    ImportResult;
+}) {
+  const reconciliation =
+    result.reconciliation;
+
+  const hasReconciliationProblem =
+    Boolean(
+      reconciliation.error
+    );
+
+  const hasAttention =
+    reconciliation.pending >
+      0 ||
+    reconciliation.conflicts >
+      0 ||
+    hasReconciliationProblem;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+      {/* =====================================================
+          CABEÇALHO
+      ====================================================== */}
+
+      <div className="flex gap-3 border-b border-emerald-100 bg-emerald-50 px-5 py-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+          <CheckCircle2
+            size={
+              20
+            }
+          />
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold text-emerald-900">
+            Importação concluída
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-emerald-700">
+            A máscara do Sienge foi processada com sucesso. A
+            conciliação com as solicitações de cartão também foi
+            executada automaticamente.
+          </p>
+        </div>
+      </div>
+
+      {/* =====================================================
+          RESULTADO DA MÁSCARA
+      ====================================================== */}
+
+      <div className="p-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
+            Resultado da importação
+          </p>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ResultMetric
+              label="Linhas processadas"
+              value={
+                result.total
+              }
+            />
+
+            <ResultMetric
+              label="Novas"
+              value={
+                result.inserted
+              }
+            />
+
+            <ResultMetric
+              label="Atualizadas"
+              value={
+                result.updated
+              }
+            />
+
+            <ResultMetric
+              label="Sem alteração"
+              value={
+                result.unchanged
+              }
+            />
+          </div>
+        </div>
+
+        {/* ===================================================
+            USUÁRIOS NÃO VINCULADOS
+        ==================================================== */}
+
+        {result.unmatchedUsers >
+          0 && (
+          <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <UserRoundX
+              size={
+                18
+              }
+              className="mt-0.5 shrink-0 text-amber-700"
+            />
+
+            <div>
+              <p className="text-xs font-semibold text-amber-900">
+                {result.unmatchedUsers} usuário
+                {result.unmatchedUsers ===
+                1
+                  ? ""
+                  : "s"}{" "}
+                do Sienge ainda sem vínculo
+              </p>
+
+              <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                Os dados foram importados, mas esses usuários
+                precisam ser associados aos respectivos perfis do
+                Projeta Compras.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================
+            CONCILIAÇÃO CARTÃO x SIENGE
+        ==================================================== */}
+
+        <div className="mt-6 border-t border-slate-100 pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Link2
+                  size={
+                    17
+                  }
+                  className="text-[#AF1B1B]"
+                />
+
+                <h3 className="text-sm font-semibold text-slate-950">
+                  Conciliação Cartão × Sienge
+                </h3>
+              </div>
+
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                O sistema verificou automaticamente as solicitações
+                de cartão que possuem número Sienge informado.
+              </p>
+            </div>
+
+            {hasAttention ? (
+              <span className="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-semibold text-amber-700">
+                Requer atenção
+              </span>
+            ) : (
+              <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-semibold text-emerald-700">
+                Sem pendências
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ReconciliationMetric
+              icon={
+                Link2
+              }
+              label="Verificados"
+              value={
+                reconciliation.checked
+              }
+              description="Solicitações analisadas"
+              tone="neutral"
+            />
+
+            <ReconciliationMetric
+              icon={
+                CheckCircle2
+              }
+              label="Vinculados"
+              value={
+                reconciliation.linked
+              }
+              description="Vínculo confirmado"
+              tone="success"
+            />
+
+            <ReconciliationMetric
+              icon={
+                Clock3
+              }
+              label="Aguardando"
+              value={
+                reconciliation.pending
+              }
+              description="SC ainda não localizada"
+              tone={
+                reconciliation.pending >
+                0
+                  ? "warning"
+                  : "neutral"
+              }
+            />
+
+            <ReconciliationMetric
+              icon={
+                TriangleAlert
+              }
+              label="Revisar"
+              value={
+                reconciliation.conflicts
+              }
+              description="Conflitos encontrados"
+              tone={
+                reconciliation.conflicts >
+                0
+                  ? "danger"
+                  : "neutral"
+              }
+            />
+          </div>
+
+          {/* =================================================
+              EXPLICAÇÃO DIDÁTICA
+          ================================================== */}
+
+          {reconciliation.checked ===
+            0 &&
+            !hasReconciliationProblem && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold text-slate-700">
+                  Nenhuma solicitação de cartão precisava ser
+                  conciliada nesta importação.
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  Isso acontece quando não existem cartões com
+                  número Sienge pendente de vínculo.
+                </p>
+              </div>
+            )}
+
+          {reconciliation.pending >
+            0 && (
+            <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <Clock3
+                size={
+                  17
+                }
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
+
+              <div>
+                <p className="text-xs font-semibold text-amber-900">
+                  Existem vínculos aguardando uma próxima
+                  importação
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                  O número Sienge já foi informado na devolução do
+                  cartão, mas a SC correspondente ainda não foi
+                  localizada nos dados importados. Nenhuma ação
+                  manual é necessária agora.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {reconciliation.conflicts >
+            0 && (
+            <div className="mt-4 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+              <TriangleAlert
+                size={
+                  17
+                }
+                className="mt-0.5 shrink-0 text-red-700"
+              />
+
+              <div>
+                <p className="text-xs font-semibold text-red-900">
+                  Existem vínculos que precisam de revisão
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-red-700">
+                  O sistema encontrou a SC, mas não conseguiu
+                  confirmar o vínculo de forma segura. Esses casos
+                  aparecerão na área de conciliação do Financeiro.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {reconciliation.error && (
+            <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <AlertCircle
+                size={
+                  17
+                }
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
+
+              <div>
+                <p className="text-xs font-semibold text-amber-900">
+                  Importação concluída, mas a conciliação encontrou
+                  um problema
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                  {
+                    reconciliation.error
+                  }
+                </p>
+
+                <p className="mt-2 text-[10px] leading-4 text-amber-700">
+                  Os dados do Sienge foram importados normalmente.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================
+// MÉTRICA DA PRÉVIA
 // ============================================================
 
 function PreviewMetric({
@@ -653,9 +1042,14 @@ function PreviewMetric({
   value,
   attention = false,
 }: {
-  label: string;
-  value: number;
-  attention?: boolean;
+  label:
+    string;
+
+  value:
+    number;
+
+  attention?:
+    boolean;
 }) {
   return (
     <div
@@ -664,7 +1058,9 @@ function PreviewMetric({
         attention
           ? "border-amber-200 bg-amber-50"
           : "border-slate-200 bg-slate-50",
-      ].join(" ")}
+      ].join(
+        " "
+      )}
     >
       <p
         className={[
@@ -672,13 +1068,131 @@ function PreviewMetric({
           attention
             ? "text-amber-800"
             : "text-slate-950",
-        ].join(" ")}
+        ].join(
+          " "
+        )}
       >
-        {value}
+        {
+          value
+        }
       </p>
 
       <p className="mt-1 text-xs text-slate-500">
-        {label}
+        {
+          label
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// MÉTRICA DO RESULTADO
+// ============================================================
+
+function ResultMetric({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    number;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-2xl font-semibold text-slate-950">
+        {
+          value
+        }
+      </p>
+
+      <p className="mt-1 text-xs text-slate-500">
+        {
+          label
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// MÉTRICA DE CONCILIAÇÃO
+// ============================================================
+
+function ReconciliationMetric({
+  icon:
+    Icon,
+  label,
+  value,
+  description,
+  tone,
+}: {
+  icon:
+    typeof Link2;
+
+  label:
+    string;
+
+  value:
+    number;
+
+  description:
+    string;
+
+  tone:
+    | "neutral"
+    | "success"
+    | "warning"
+    | "danger";
+}) {
+  const styles =
+    tone ===
+    "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : tone ===
+          "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : tone ===
+            "danger"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-slate-200 bg-slate-50 text-slate-600";
+
+  return (
+    <div
+      className={[
+        "rounded-xl border p-4",
+        styles,
+      ].join(
+        " "
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <Icon
+          size={
+            17
+          }
+          className="opacity-70"
+        />
+
+        <p className="text-2xl font-semibold">
+          {
+            value
+          }
+        </p>
+      </div>
+
+      <p className="mt-3 text-xs font-semibold">
+        {
+          label
+        }
+      </p>
+
+      <p className="mt-1 text-[10px] opacity-70">
+        {
+          description
+        }
       </p>
     </div>
   );
