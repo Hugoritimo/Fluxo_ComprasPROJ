@@ -303,18 +303,19 @@ export default async function MyOrderDetailsPage({
           row.role
         )
     );
-
-  const canManageSupply =
-    roles.includes(
-      "supply"
-    ) ||
-    roles.includes(
-      "admin"
-    ) ||
-    roles.includes(
-      "superadmin"
-    );
-
+const canManageSupply =
+  roles.includes(
+    "supply"
+  ) ||
+  roles.includes(
+    "finance"
+  ) ||
+  roles.includes(
+    "admin"
+  ) ||
+  roles.includes(
+    "superadmin"
+  );
   const canReleaseReceipt =
     roles.includes(
       "finance"

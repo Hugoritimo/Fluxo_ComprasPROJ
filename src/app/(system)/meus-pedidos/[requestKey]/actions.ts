@@ -81,6 +81,7 @@ const CONFIRMABLE_TRACKING_STATUSES = [
 // Suprimentos altera os dados operacionais da compra.
 const SUPPLY_EDIT_ROLES = [
     "supply",
+    "finance",
     "admin",
     "superadmin",
 ];
