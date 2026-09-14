@@ -22,6 +22,7 @@ import {
   Hash,
   Package,
   PackageCheck,
+  PencilLine,
   ShoppingCart,
   Store,
   Truck,
@@ -33,6 +34,10 @@ import {
 } from "@/lib/supabase/server";
 
 import DeliveryConfirmationForm from "./delivery-confirmation-form";
+
+import ReceiptReleaseControl from "./receipt-release-control";
+
+import SupplyItemForm from "./supply-item-form";
 
 // ============================================================
 // TIPOS
@@ -71,6 +76,80 @@ type DeliveryConfirmationRow = {
     | string
     | null;
 };
+
+type SupplyUpdateRow = {
+  item_id: string;
+
+  supply_status:
+    | string
+    | null;
+
+  supply_status_date:
+    | string
+    | null;
+
+  order_number:
+    | string
+    | null;
+
+  supplier_name:
+    | string
+    | null;
+
+  supplier_contact:
+    | string
+    | null;
+
+  supplier_phone:
+    | string
+    | null;
+
+  delivery_or_pickup_forecast:
+    | string
+    | null;
+
+  authorization_status:
+    | string
+    | null;
+
+  updated_at:
+    | string
+    | null;
+};
+
+type ReceiptReleaseRow = {
+  item_id: string;
+
+  is_released: boolean;
+
+  released_at:
+    | string
+    | null;
+
+  released_by:
+    | string
+    | null;
+
+  revoked_at:
+    | string
+    | null;
+
+  revoked_by:
+    | string
+    | null;
+};
+
+// ============================================================
+// ETAPAS ELEGÍVEIS
+// ============================================================
+
+const RECEIPT_ELIGIBLE_STATUSES = [
+  "Compra realizada",
+  "Compra via cartão",
+  "Disponível para retirada",
+  "Em processo de entrega",
+  "Entregue",
+];
 
 // ============================================================
 // FORMATADORES
@@ -166,7 +245,7 @@ export default async function MyOrderDetailsPage({
     await createClient();
 
   // =========================================================
-  // AUTENTICAÇÃO
+  // AUTH
   // =========================================================
 
   const {
@@ -199,9 +278,6 @@ export default async function MyOrderDetailsPage({
   const {
     data:
       rolesData,
-
-    error:
-      rolesError,
   } =
     await supabase
       .from(
@@ -214,15 +290,6 @@ export default async function MyOrderDetailsPage({
         "user_id",
         userId
       );
-
-  if (
-    rolesError
-  ) {
-    console.error(
-      "Erro ao carregar roles do pedido:",
-      rolesError
-    );
-  }
 
   const roles =
     (
@@ -237,7 +304,18 @@ export default async function MyOrderDetailsPage({
         )
     );
 
-  const canViewAll =
+  const canManageSupply =
+    roles.includes(
+      "supply"
+    ) ||
+    roles.includes(
+      "admin"
+    ) ||
+    roles.includes(
+      "superadmin"
+    );
+
+  const canReleaseReceipt =
     roles.includes(
       "finance"
     ) ||
@@ -248,8 +326,12 @@ export default async function MyOrderDetailsPage({
       "superadmin"
     );
 
+  const canViewAll =
+    canManageSupply ||
+    canReleaseReceipt;
+
   // =========================================================
-  // RESUMO DA SOLICITAÇÃO
+  // RESUMO
   // =========================================================
 
   let summaryQuery =
@@ -265,11 +347,6 @@ export default async function MyOrderDetailsPage({
         requestKey
       );
 
-  // =========================================================
-  // USUÁRIO COMUM:
-  // SOMENTE SOLICITAÇÕES VINCULADAS A ELE
-  // =========================================================
-
   if (
     !canViewAll
   ) {
@@ -283,21 +360,9 @@ export default async function MyOrderDetailsPage({
   const {
     data:
       summary,
-
-    error:
-      summaryError,
   } =
     await summaryQuery
       .maybeSingle();
-
-  if (
-    summaryError
-  ) {
-    console.error(
-      "Erro ao carregar solicitação Sienge:",
-      summaryError
-    );
-  }
 
   if (
     !summary
@@ -305,16 +370,12 @@ export default async function MyOrderDetailsPage({
     notFound();
   }
 
-  // =========================================================
-  // IDENTIFICAR DONO
-  // =========================================================
-
   const isOwnRequest =
     summary.requester_profile_id ===
     userId;
 
   // =========================================================
-  // ITENS IMPORTADOS DO SIENGE
+  // ITENS
   // =========================================================
 
   let itemsQuery =
@@ -329,36 +390,26 @@ export default async function MyOrderDetailsPage({
         insumo,
         requester_profile_id,
         requester_sienge_username,
-
         cost_center_or_site,
         request_date,
         quantity,
         unit,
-
         supply_status,
         supply_status_date,
-
         authorization_status,
         authorization_date,
-
         pending_quantity,
         balance_status,
-
         order_number,
-
         supplier_name,
         supplier_contact,
         supplier_phone,
-
         initial_delivery_forecast,
         delivery_or_pickup_forecast,
-
         delivery_status,
         delivery_date,
-
         received_by,
         invoice_number,
-
         last_seen_at
         `
       )
@@ -366,10 +417,6 @@ export default async function MyOrderDetailsPage({
         "sc_number",
         summary.sc_number
       );
-
-  // =========================================================
-  // MESMO SOLICITANTE
-  // =========================================================
 
   if (
     summary.requester_profile_id
@@ -397,10 +444,6 @@ export default async function MyOrderDetailsPage({
     }
   }
 
-  // =========================================================
-  // MESMO CENTRO / OBRA
-  // =========================================================
-
   if (
     summary.cost_center_or_site
   ) {
@@ -420,9 +463,6 @@ export default async function MyOrderDetailsPage({
   const {
     data:
       itemsData,
-
-    error:
-      itemsError,
   } =
     await itemsQuery.order(
       "insumo",
@@ -431,15 +471,6 @@ export default async function MyOrderDetailsPage({
           true,
       }
     );
-
-  if (
-    itemsError
-  ) {
-    console.error(
-      "Erro ao carregar itens da solicitação:",
-      itemsError
-    );
-  }
 
   const items =
     itemsData ??
@@ -452,13 +483,6 @@ export default async function MyOrderDetailsPage({
     notFound();
   }
 
-  // =========================================================
-  // CONFIRMAÇÕES DO SOLICITANTE
-  //
-  // Esses dados NÃO vêm da máscara do Sienge.
-  // São dados locais preenchidos pelo colaborador.
-  // =========================================================
-
   const itemIds =
     items.map(
       (
@@ -469,69 +493,199 @@ export default async function MyOrderDetailsPage({
         )
     );
 
-  const {
-    data:
-      confirmationsData,
+  // =========================================================
+  // DADOS LOCAIS
+  // =========================================================
 
-    error:
-      confirmationsError,
-  } =
-    await supabase
-      .from(
-        "sienge_requester_delivery_confirmations"
-      )
-      .select(
-        `
-        item_id,
-        requester_profile_id,
-        delivery_status,
-        delivery_date,
-        received_by,
-        invoice_number,
-        updated_at
-        `
-      )
-      .in(
-        "item_id",
-        itemIds
-      );
+  const [
+    confirmationsResult,
+    supplyUpdatesResult,
+    releasesResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "sienge_requester_delivery_confirmations"
+        )
+        .select(
+          `
+          item_id,
+          requester_profile_id,
+          delivery_status,
+          delivery_date,
+          received_by,
+          invoice_number,
+          updated_at
+          `
+        )
+        .in(
+          "item_id",
+          itemIds
+        ),
 
-  if (
-    confirmationsError
-  ) {
-    console.error(
-      "Erro ao carregar confirmações de recebimento:",
-      confirmationsError
-    );
-  }
+      supabase
+        .from(
+          "sienge_supply_item_updates"
+        )
+        .select(
+          `
+          item_id,
+          supply_status,
+          supply_status_date,
+          order_number,
+          supplier_name,
+          supplier_contact,
+          supplier_phone,
+          delivery_or_pickup_forecast,
+          authorization_status,
+          updated_at
+          `
+        )
+        .in(
+          "item_id",
+          itemIds
+        ),
+
+      supabase
+        .from(
+          "sienge_receipt_releases"
+        )
+        .select(
+          `
+          item_id,
+          is_released,
+          released_at,
+          released_by,
+          revoked_at,
+          revoked_by
+          `
+        )
+        .in(
+          "item_id",
+          itemIds
+        ),
+    ]);
 
   const confirmations =
     (
-      confirmationsData ??
+      confirmationsResult.data ??
       []
     ) as DeliveryConfirmationRow[];
 
+  const supplyUpdates =
+    (
+      supplyUpdatesResult.data ??
+      []
+    ) as SupplyUpdateRow[];
+
+  const releases =
+    (
+      releasesResult.data ??
+      []
+    ) as ReceiptReleaseRow[];
+
   const confirmationByItem =
+    new Map(
+      confirmations.map(
+        (
+          row
+        ) => [
+          String(
+            row.item_id
+          ),
+          row,
+        ]
+      )
+    );
+
+  const supplyUpdateByItem =
+    new Map(
+      supplyUpdates.map(
+        (
+          row
+        ) => [
+          String(
+            row.item_id
+          ),
+          row,
+        ]
+      )
+    );
+
+  const releaseByItem =
+    new Map(
+      releases.map(
+        (
+          row
+        ) => [
+          String(
+            row.item_id
+          ),
+          row,
+        ]
+      )
+    );
+
+  // =========================================================
+  // NOMES DE QUEM LIBEROU
+  // =========================================================
+
+  const actorIds =
+    Array.from(
+      new Set(
+        releases
+          .map(
+            (
+              release
+            ) =>
+              release.released_by
+          )
+          .filter(
+            Boolean
+          ) as string[]
+      )
+    );
+
+  const actorNameById =
     new Map<
       string,
-      DeliveryConfirmationRow
+      string
     >();
 
-  for (
-    const confirmation
-    of confirmations
+  if (
+    actorIds.length >
+    0
   ) {
-    confirmationByItem.set(
-      String(
-        confirmation.item_id
-      ),
-      confirmation
-    );
-  }
+    const {
+      data:
+        actors,
+    } =
+      await supabase
+        .from(
+          "profiles"
+        )
+        .select(
+          "id, full_name"
+        )
+        .in(
+          "id",
+          actorIds
+        );
 
-  // =========================================================
-  // DADOS GERAIS
-  // =========================================================
+    for (
+      const actor
+      of actors ??
+      []
+    ) {
+      actorNameById.set(
+        String(
+          actor.id
+        ),
+        actor.full_name ??
+          "Usuário"
+      );
+    }
+  }
 
   const trackingStatus =
     summary.tracking_status ??
@@ -541,16 +695,8 @@ export default async function MyOrderDetailsPage({
     summary.requester_sienge_username ??
     "Não informado";
 
-  // =========================================================
-  // TELA
-  // =========================================================
-
   return (
     <div className="mx-auto max-w-[1500px]">
-      {/* =====================================================
-          VOLTAR
-      ====================================================== */}
-
       <Link
         href="/meus-pedidos"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#AF1B1B]"
@@ -561,12 +707,8 @@ export default async function MyOrderDetailsPage({
           }
         />
 
-        Voltar para Meus Pedidos
+        Voltar
       </Link>
-
-      {/* =====================================================
-          CABEÇALHO
-      ====================================================== */}
 
       <header className="mb-7">
         <div className="flex flex-wrap items-center gap-3">
@@ -592,7 +734,7 @@ export default async function MyOrderDetailsPage({
                 }
               />
 
-              Visualização administrativa
+              Visualização operacional
             </span>
           )}
         </div>
@@ -602,14 +744,10 @@ export default async function MyOrderDetailsPage({
         </h1>
 
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          Consulte os dados importados do Sienge, acompanhe o
-          andamento da compra e confirme o recebimento dos itens.
+          Acompanhe o processo de compra, as atualizações de
+          Suprimentos e o recebimento dos itens.
         </p>
       </header>
-
-      {/* =====================================================
-          RESUMO
-      ====================================================== */}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <InfoCard
@@ -670,30 +808,23 @@ export default async function MyOrderDetailsPage({
         />
       </div>
 
-      {/* =====================================================
-          ANDAMENTO
-      ====================================================== */}
-
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="font-semibold text-slate-950">
-                Andamento da compra
-              </h2>
+        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-950">
+              Andamento da compra
+            </h2>
 
-              <p className="mt-1 text-xs text-slate-500">
-                Status calculado a partir das informações
-                importadas do Sienge.
-              </p>
-            </div>
-
-            <StatusBadge
-              status={
-                trackingStatus
-              }
-            />
+            <p className="mt-1 text-xs text-slate-500">
+              Status geral calculado a partir dos dados do Sienge.
+            </p>
           </div>
+
+          <StatusBadge
+            status={
+              trackingStatus
+            }
+          />
         </div>
 
         <OrderTimeline
@@ -703,10 +834,6 @@ export default async function MyOrderDetailsPage({
         />
       </section>
 
-      {/* =====================================================
-          ITENS
-      ====================================================== */}
-
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-6 py-5">
           <h2 className="font-semibold text-slate-950">
@@ -714,8 +841,8 @@ export default async function MyOrderDetailsPage({
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Informações importadas da máscara do Sienge e
-            confirmação de recebimento de cada item.
+            Cada item possui acompanhamento próprio de Suprimentos,
+            liberação financeira e confirmação de recebimento.
           </p>
         </div>
 
@@ -725,50 +852,112 @@ export default async function MyOrderDetailsPage({
               item,
               index
             ) => {
+              const itemId =
+                String(
+                  item.id
+                );
+
               const confirmation =
                 confirmationByItem.get(
-                  String(
-                    item.id
-                  )
+                  itemId
                 );
+
+              const supplyUpdate =
+                supplyUpdateByItem.get(
+                  itemId
+                );
+
+              const release =
+                releaseByItem.get(
+                  itemId
+                );
+
+              // ===============================================
+              // VALORES EFETIVOS
+              // ===============================================
+
+              const effectiveSupplyStatus =
+                supplyUpdate
+                  ? supplyUpdate.supply_status
+                  : item.supply_status ??
+                    trackingStatus;
+
+              const effectiveSupplyStatusDate =
+                supplyUpdate
+                  ? supplyUpdate.supply_status_date
+                  : item.supply_status_date;
+
+              const effectiveOrderNumber =
+                supplyUpdate
+                  ? supplyUpdate.order_number
+                  : item.order_number;
+
+              const effectiveSupplierName =
+                supplyUpdate
+                  ? supplyUpdate.supplier_name
+                  : item.supplier_name;
+
+              const effectiveSupplierContact =
+                supplyUpdate
+                  ? supplyUpdate.supplier_contact
+                  : item.supplier_contact;
+
+              const effectiveSupplierPhone =
+                supplyUpdate
+                  ? supplyUpdate.supplier_phone
+                  : item.supplier_phone;
+
+              const effectiveForecast =
+                supplyUpdate
+                  ? supplyUpdate.delivery_or_pickup_forecast
+                  : item.delivery_or_pickup_forecast;
+
+              const effectiveAuthorization =
+                supplyUpdate
+                  ? supplyUpdate.authorization_status
+                  : item.authorization_status;
+
+              const eligibleForRelease =
+                Boolean(
+                  effectiveOrderNumber
+                ) ||
+                RECEIPT_ELIGIBLE_STATUSES.includes(
+                  effectiveSupplyStatus ??
+                    ""
+                ) ||
+                RECEIPT_ELIGIBLE_STATUSES.includes(
+                  trackingStatus
+                );
+
+              const isReleased =
+                release
+                  ?.is_released ===
+                true;
+
+              const canUpdateDelivery =
+                isOwnRequest &&
+                isReleased;
+
+              const releasedByName =
+                release
+                  ?.released_by
+                  ? actorNameById.get(
+                      release.released_by
+                    ) ??
+                    null
+                  : null;
 
               const itemRequesterName =
                 item.requester_sienge_username ??
                 requesterName;
 
-              const processAllowsConfirmation =
-                Boolean(
-                  item.order_number
-                ) ||
-                [
-                  "Compra realizada",
-                  "Compra via cartão",
-                  "Disponível para retirada",
-                  "Em processo de entrega",
-                  "Entregue",
-                ].includes(
-                  trackingStatus
-                );
-
-              // =================================================
-              // SOMENTE O SOLICITANTE VINCULADO PODE EDITAR
-              // =================================================
-
-              const canUpdateDelivery =
-                isOwnRequest &&
-                processAllowsConfirmation;
-
               return (
                 <article
                   key={
-                    item.id
+                    itemId
                   }
                   className="p-5 sm:p-6"
                 >
-                  {/* =========================================
-                      CABEÇALHO ITEM
-                  ========================================== */}
-
                   <div className="mb-6 flex flex-col gap-4 border-b border-slate-100 pb-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -780,20 +969,26 @@ export default async function MyOrderDetailsPage({
                           }
                         </span>
 
-                        {item.supply_status && (
+                        {effectiveSupplyStatus && (
                           <ItemBadge>
                             {
-                              item.supply_status
+                              effectiveSupplyStatus
                             }
                           </ItemBadge>
                         )}
 
-                        {item.order_number && (
+                        {effectiveOrderNumber && (
                           <ItemBadge>
                             Pedido{" "}
                             {
-                              item.order_number
+                              effectiveOrderNumber
                             }
+                          </ItemBadge>
+                        )}
+
+                        {supplyUpdate && (
+                          <ItemBadge>
+                            Atualizado no Projeta
                           </ItemBadge>
                         )}
 
@@ -840,9 +1035,7 @@ export default async function MyOrderDetailsPage({
                     </div>
                   </div>
 
-                  {/* =========================================
-                      DADOS DA SOLICITAÇÃO
-                  ========================================== */}
+                  {/* DADOS DA SOLICITAÇÃO */}
 
                   <section className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/40">
                     <div className="border-b border-slate-200 px-5 py-4">
@@ -851,8 +1044,7 @@ export default async function MyOrderDetailsPage({
                       </h4>
 
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Informações registradas na solicitação
-                        original e importadas do Sienge.
+                        Dados de origem importados do Sienge.
                       </p>
                     </div>
 
@@ -920,7 +1112,6 @@ export default async function MyOrderDetailsPage({
                         label="SC"
                         value={
                           item.sc_number ??
-                          summary.sc_number ??
                           "-"
                         }
                       />
@@ -929,7 +1120,7 @@ export default async function MyOrderDetailsPage({
                         icon={
                           Package
                         }
-                        label="Quantidade Solicitada"
+                        label="Quantidade"
                         value={
                           formatQuantity(
                             item.quantity
@@ -941,7 +1132,7 @@ export default async function MyOrderDetailsPage({
                         icon={
                           PackageCheck
                         }
-                        label="Unidade de Medida"
+                        label="Unidade"
                         value={
                           item.unit ??
                           "-"
@@ -950,9 +1141,7 @@ export default async function MyOrderDetailsPage({
                     </div>
                   </section>
 
-                  {/* =========================================
-                      ACOMPANHAMENTO DE SUPRIMENTOS
-                  ========================================== */}
+                  {/* SUPRIMENTOS */}
 
                   <section className="mb-5 rounded-2xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 px-5 py-4">
@@ -963,113 +1152,157 @@ export default async function MyOrderDetailsPage({
                           </h4>
 
                           <p className="mt-1 text-[11px] text-slate-500">
-                            Dados atualizados por meio da
-                            importação da máscara do Sienge.
+                            Informações operacionais da compra deste item.
                           </p>
                         </div>
 
-                        <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                          Somente leitura
-                        </span>
+                        {canManageSupply ? (
+                          <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#AF1B1B]/20 bg-[#AF1B1B]/5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#AF1B1B]">
+                            <PencilLine
+                              size={
+                                11
+                              }
+                            />
+
+                            Editável
+                          </span>
+                        ) : (
+                          <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                            Somente leitura
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2 xl:grid-cols-4">
-                      <DataField
-                        icon={
-                          CheckCircle2
+                    {canManageSupply ? (
+                      <SupplyItemForm
+                        itemId={
+                          itemId
                         }
-                        label="Status Suprimentos"
-                        value={
-                          item.supply_status ??
-                          trackingStatus
+                        requestKey={
+                          requestKey
+                        }
+                        supplyStatus={
+                          effectiveSupplyStatus
+                        }
+                        supplyStatusDate={
+                          effectiveSupplyStatusDate
+                        }
+                        orderNumber={
+                          effectiveOrderNumber
+                        }
+                        supplierName={
+                          effectiveSupplierName
+                        }
+                        supplierContact={
+                          effectiveSupplierContact
+                        }
+                        supplierPhone={
+                          effectiveSupplierPhone
+                        }
+                        deliveryOrPickupForecast={
+                          effectiveForecast
+                        }
+                        authorizationStatus={
+                          effectiveAuthorization
                         }
                       />
+                    ) : (
+                      <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                        <DataField
+                          icon={
+                            CheckCircle2
+                          }
+                          label="Status Suprimentos"
+                          value={
+                            effectiveSupplyStatus ??
+                            "-"
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          CalendarDays
-                        }
-                        label="Data do Status"
-                        value={
-                          formatDate(
-                            item.supply_status_date
-                          )
-                        }
-                      />
+                        <DataField
+                          icon={
+                            CalendarDays
+                          }
+                          label="Data do Status"
+                          value={
+                            formatDate(
+                              effectiveSupplyStatusDate
+                            )
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          ShoppingCart
-                        }
-                        label="Pedido"
-                        value={
-                          item.order_number ??
-                          "Ainda não gerado"
-                        }
-                      />
+                        <DataField
+                          icon={
+                            ShoppingCart
+                          }
+                          label="Pedido"
+                          value={
+                            effectiveOrderNumber ??
+                            "Ainda não gerado"
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          Store
-                        }
-                        label="Fornecedor"
-                        value={
-                          item.supplier_name ??
-                          "Ainda não definido"
-                        }
-                      />
+                        <DataField
+                          icon={
+                            Store
+                          }
+                          label="Fornecedor"
+                          value={
+                            effectiveSupplierName ??
+                            "Ainda não definido"
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          UserRound
-                        }
-                        label="Contato"
-                        value={
-                          item.supplier_contact ??
-                          "-"
-                        }
-                      />
+                        <DataField
+                          icon={
+                            UserRound
+                          }
+                          label="Contato"
+                          value={
+                            effectiveSupplierContact ??
+                            "-"
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          FileText
-                        }
-                        label="Telefone"
-                        value={
-                          item.supplier_phone ??
-                          "-"
-                        }
-                      />
+                        <DataField
+                          icon={
+                            FileText
+                          }
+                          label="Telefone"
+                          value={
+                            effectiveSupplierPhone ??
+                            "-"
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          Truck
-                        }
-                        label="Previsão de Entrega / Retirada"
-                        value={
-                          formatDate(
-                            item.delivery_or_pickup_forecast
-                          )
-                        }
-                      />
+                        <DataField
+                          icon={
+                            Truck
+                          }
+                          label="Previsão Entrega / Retirada"
+                          value={
+                            formatDate(
+                              effectiveForecast
+                            )
+                          }
+                        />
 
-                      <DataField
-                        icon={
-                          CheckCircle2
-                        }
-                        label="Autorização"
-                        value={
-                          item.authorization_status ??
-                          "-"
-                        }
-                      />
-                    </div>
+                        <DataField
+                          icon={
+                            CheckCircle2
+                          }
+                          label="Autorização"
+                          value={
+                            effectiveAuthorization ??
+                            "-"
+                          }
+                        />
+                      </div>
+                    )}
                   </section>
 
-                  {/* =========================================
-                      RECEBIMENTO DO SOLICITANTE
-                  ========================================== */}
+                  {/* RECEBIMENTO */}
 
                   <section className="rounded-2xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 px-5 py-4">
@@ -1080,95 +1313,148 @@ export default async function MyOrderDetailsPage({
                           </h4>
 
                           <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                            Confirme o recebimento deste item após
-                            sua entrega.
+                            O Financeiro libera e o solicitante confirma o recebimento físico.
                           </p>
                         </div>
 
-                        {canUpdateDelivery ? (
-                          <span className="w-fit rounded-full border border-[#AF1B1B]/15 bg-[#AF1B1B]/5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#AF1B1B]">
-                            Sua responsabilidade
+                        {isReleased ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-bold uppercase text-emerald-700">
+                            Liberado
                           </span>
                         ) : (
-                          <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                            Somente leitura
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase text-slate-500">
+                            Bloqueado
                           </span>
                         )}
                       </div>
                     </div>
 
                     <div className="p-5">
-                      {/* =====================================
-                          VISUALIZAÇÃO ADMINISTRATIVA
-                      ====================================== */}
-
-                      {canViewAll &&
-                        !isOwnRequest && (
-                          <div className="mb-5 flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <Eye
-                              size={
-                                17
-                              }
-                              className="mt-0.5 shrink-0 text-slate-400"
-                            />
-
-                            <div>
-                              <p className="text-xs font-semibold text-slate-700">
-                                Visualização somente leitura
-                              </p>
-
-                              <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                                Os dados de recebimento devem ser
-                                preenchidos pelo solicitante
-                                responsável por esta SC.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                      {/* =====================================
-                          FORMULÁRIO
-
-                          SOMENTE ESTES CAMPOS SÃO EDITÁVEIS:
-                          - Status da entrega
-                          - Data
-                          - Recebido por
-                          - Nota Fiscal
-                      ====================================== */}
-
-                      <DeliveryConfirmationForm
+                      <ReceiptReleaseControl
                         itemId={
-                          String(
-                            item.id
-                          )
+                          itemId
                         }
                         requestKey={
                           requestKey
                         }
-                        currentStatus={
-                          confirmation
-                            ?.delivery_status ??
+                        eligible={
+                          eligibleForRelease
+                        }
+                        released={
+                          isReleased
+                        }
+                        releasedAt={
+                          release
+                            ?.released_at ??
                           null
                         }
-                        currentDate={
-                          confirmation
-                            ?.delivery_date ??
-                          null
+                        releasedByName={
+                          releasedByName
                         }
-                        currentReceivedBy={
-                          confirmation
-                            ?.received_by ??
-                          null
+                        canManage={
+                          canReleaseReceipt
                         }
-                        currentInvoiceNumber={
-                          confirmation
-                            ?.invoice_number ??
-                          null
-                        }
-                        disabled={
-                          !canUpdateDelivery
+                        hasConfirmation={
+                          Boolean(
+                            confirmation
+                              ?.delivery_status
+                          )
                         }
                       />
+
+                      {isOwnRequest &&
+                        isReleased && (
+                        <DeliveryConfirmationForm
+                          itemId={
+                            itemId
+                          }
+                          requestKey={
+                            requestKey
+                          }
+                          currentStatus={
+                            confirmation
+                              ?.delivery_status ??
+                            null
+                          }
+                          currentDate={
+                            confirmation
+                              ?.delivery_date ??
+                            null
+                          }
+                          currentReceivedBy={
+                            confirmation
+                              ?.received_by ??
+                            null
+                          }
+                          currentInvoiceNumber={
+                            confirmation
+                              ?.invoice_number ??
+                            null
+                          }
+                          disabled={
+                            !canUpdateDelivery
+                          }
+                        />
+                      )}
+
+                      {!isOwnRequest &&
+                        canViewAll && (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="mb-4 flex items-center gap-2">
+                            <Eye
+                              size={
+                                15
+                              }
+                              className="text-slate-400"
+                            />
+
+                            <p className="text-xs font-semibold text-slate-700">
+                              Confirmação do solicitante
+                            </p>
+                          </div>
+
+                          {confirmation ? (
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                              <ReadOnlyReceiptField
+                                label="Status"
+                                value={
+                                  confirmation.delivery_status ??
+                                  "-"
+                                }
+                              />
+
+                              <ReadOnlyReceiptField
+                                label="Data"
+                                value={
+                                  formatDate(
+                                    confirmation.delivery_date
+                                  )
+                                }
+                              />
+
+                              <ReadOnlyReceiptField
+                                label="Recebido por"
+                                value={
+                                  confirmation.received_by ??
+                                  "-"
+                                }
+                              />
+
+                              <ReadOnlyReceiptField
+                                label="Nota Fiscal"
+                                value={
+                                  confirmation.invoice_number ??
+                                  "-"
+                                }
+                              />
+                            </div>
+                          ) : (
+                            <p className="text-[10px] leading-5 text-slate-500">
+                              O solicitante ainda não registrou o recebimento deste item.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </section>
                 </article>
@@ -1182,14 +1468,41 @@ export default async function MyOrderDetailsPage({
 }
 
 // ============================================================
+// RECEBIMENTO SOMENTE LEITURA
+// ============================================================
+
+function ReadOnlyReceiptField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+        {
+          label
+        }
+      </p>
+
+      <p className="mt-1 text-xs font-semibold text-slate-700">
+        {
+          value
+        }
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
 // TIMELINE
 // ============================================================
 
 function OrderTimeline({
   status,
 }: {
-  status:
-    string;
+  status: string;
 }) {
   const currentStep =
     getCurrentStep(
@@ -1197,53 +1510,12 @@ function OrderTimeline({
     );
 
   const steps = [
-    {
-      label:
-        "Solicitação recebida",
-
-      description:
-        "Solicitação identificada na importação.",
-    },
-
-    {
-      label:
-        "Em cotação",
-
-      description:
-        "Suprimentos está realizando a cotação.",
-    },
-
-    {
-      label:
-        "Em aprovação",
-
-      description:
-        "Compra em processo de aprovação.",
-    },
-
-    {
-      label:
-        "Compra realizada",
-
-      description:
-        "Compra realizada ou pedido emitido.",
-    },
-
-    {
-      label:
-        "Entrega / Retirada",
-
-      description:
-        "Aguardando entrega ou retirada.",
-    },
-
-    {
-      label:
-        "Entregue",
-
-      description:
-        "Processo de entrega concluído.",
-    },
+    "Solicitação recebida",
+    "Em cotação",
+    "Em aprovação",
+    "Compra realizada",
+    "Entrega / Retirada",
+    "Entregue",
   ];
 
   return (
@@ -1264,10 +1536,10 @@ function OrderTimeline({
           return (
             <div
               key={
-                step.label
+                step
               }
               className={[
-                "relative rounded-xl border p-4",
+                "rounded-xl border p-4",
                 completed
                   ? "border-emerald-200 bg-emerald-50"
                   : active
@@ -1309,26 +1581,9 @@ function OrderTimeline({
                 )}
               </div>
 
-              <p
-                className={[
-                  "text-xs font-semibold",
-                  active
-                    ? "text-[#AF1B1B]"
-                    : completed
-                      ? "text-emerald-800"
-                      : "text-slate-600",
-                ].join(
-                  " "
-                )}
-              >
+              <p className="text-xs font-semibold text-slate-700">
                 {
-                  step.label
-                }
-              </p>
-
-              <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                {
-                  step.description
+                  step
                 }
               </p>
             </div>
@@ -1339,13 +1594,8 @@ function OrderTimeline({
   );
 }
 
-// ============================================================
-// TIMELINE STEP
-// ============================================================
-
 function getCurrentStep(
-  status:
-    string
+  status: string
 ) {
   switch (
     status
@@ -1373,7 +1623,7 @@ function getCurrentStep(
 }
 
 // ============================================================
-// INFO CARD
+// COMPONENTES
 // ============================================================
 
 function InfoCard({
@@ -1384,12 +1634,8 @@ function InfoCard({
 }: {
   icon:
     ElementType;
-
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1401,19 +1647,19 @@ function InfoCard({
       />
 
       <p className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        {label}
+        {
+          label
+        }
       </p>
 
       <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-        {value}
+        {
+          value
+        }
       </p>
     </div>
   );
 }
-
-// ============================================================
-// DATA FIELD
-// ============================================================
 
 function DataField({
   icon:
@@ -1423,12 +1669,8 @@ function DataField({
 }: {
   icon:
     ElementType;
-
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 }) {
   return (
     <div className="flex gap-3">
@@ -1442,20 +1684,20 @@ function DataField({
 
       <div className="min-w-0">
         <p className="text-[9px] font-semibold uppercase tracking-[0.07em] text-slate-400">
-          {label}
+          {
+            label
+          }
         </p>
 
         <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
-          {value}
+          {
+            value
+          }
         </p>
       </div>
     </div>
   );
 }
-
-// ============================================================
-// ITEM BADGE
-// ============================================================
 
 function ItemBadge({
   children,
@@ -1465,14 +1707,12 @@ function ItemBadge({
 }) {
   return (
     <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-      {children}
+      {
+        children
+      }
     </span>
   );
 }
-
-// ============================================================
-// STATUS BADGE
-// ============================================================
 
 function StatusBadge({
   status,
@@ -1491,14 +1731,15 @@ function StatusBadge({
         " "
       )}
     >
-      {status}
+      {
+        status
+      }
     </span>
   );
 }
 
 function getStatusStyle(
-  status:
-    string
+  status: string
 ) {
   switch (
     status
