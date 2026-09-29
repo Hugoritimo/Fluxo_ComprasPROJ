@@ -19,14 +19,17 @@ const initialState: ActivateAccessState = {
   error: null,
 };
 
+type ActivationType =
+  | "invite"
+  | "magiclink"
+  | "email";
+
 export default function ActivateAccessForm({
   tokenHash,
   type,
 }: {
   tokenHash: string;
-  type:
-    | "invite"
-    | "magiclink";
+  type: ActivationType;
 }) {
   const [
     state,
