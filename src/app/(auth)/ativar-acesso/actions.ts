@@ -4,22 +4,63 @@ import type {
     EmailOtpType,
 } from "@supabase/supabase-js";
 
-import { redirect } from "next/navigation";
+import {
+    redirect,
+} from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+    createClient,
+} from "@/lib/supabase/server";
 
 export type ActivateAccessState = {
     error: string | null;
 };
 
 // ============================================================
+// TIPOS DE LINK ACEITOS PELO NOSSO SISTEMA
+// ============================================================
+
+type ActivationLinkType =
+    | "invite"
+    | "magiclink"
+    | "email";
+
+// ============================================================
+// NORMALIZAR TIPO PARA O VERIFY OTP
+// ============================================================
+
+function resolveOtpType(
+    rawType: ActivationLinkType
+): EmailOtpType {
+    // Convite administrativo continua sendo "invite".
+    if (
+        rawType === "invite"
+    ) {
+        return "invite";
+    }
+
+    // Magic Link / Token Hash de e-mail deve ser verificado
+    // como "email".
+    //
+    // Também mantemos compatibilidade com links antigos que
+    // possuem ?type=magiclink.
+    return "email";
+}
+
+// ============================================================
 // CONFIRMAR PRIMEIRO ACESSO
 // ============================================================
 
 export async function activateAccess(
-    _previousState: ActivateAccessState,
-    formData: FormData
+    _previousState:
+        ActivateAccessState,
+    formData:
+        FormData
 ): Promise<ActivateAccessState> {
+    // ==========================================================
+    // TOKEN
+    // ==========================================================
+
     const tokenHash =
         String(
             formData.get(
@@ -27,14 +68,26 @@ export async function activateAccess(
             ) ?? ""
         ).trim();
 
+    // ==========================================================
+    // TIPO ORIGINAL DA URL
+    // ==========================================================
+
     const rawType =
         String(
             formData.get(
                 "type"
             ) ?? ""
-        ).trim();
+        )
+            .trim()
+            .toLowerCase();
 
-    if (!tokenHash) {
+    // ==========================================================
+    // VALIDAÇÕES BÁSICAS
+    // ==========================================================
+
+    if (
+        !tokenHash
+    ) {
         return {
             error:
                 "O link de ativação está incompleto.",
@@ -42,21 +95,47 @@ export async function activateAccess(
     }
 
     if (
-        rawType !== "invite" &&
-        rawType !== "magiclink"
+        rawType !==
+        "invite" &&
+        rawType !==
+        "magiclink" &&
+        rawType !==
+        "email"
     ) {
+        console.error(
+            "Tipo de ativação recebido:",
+            rawType
+        );
+
         return {
             error:
-                "Tipo de ativação inválido.",
+                "Tipo de ativação inválido. Solicite um novo link ao administrador.",
         };
     }
+
+    const activationType =
+        rawType as ActivationLinkType;
+
+    const otpType =
+        resolveOtpType(
+            activationType
+        );
 
     const supabase =
         await createClient();
 
-    // =========================================================
-    // SOMENTE AQUI O TOKEN É CONSUMIDO
-    // =========================================================
+    // ==========================================================
+    // VERIFICAR TOKEN
+    //
+    // IMPORTANTE:
+    //
+    // - invite    -> invite
+    // - magiclink -> email
+    // - email     -> email
+    //
+    // O token somente é consumido aqui, quando o usuário
+    // efetivamente clica em "Ativar meu acesso".
+    // ==========================================================
 
     const {
         data,
@@ -67,7 +146,7 @@ export async function activateAccess(
                 tokenHash,
 
             type:
-                rawType as EmailOtpType,
+                otpType,
         });
 
     if (
@@ -76,7 +155,24 @@ export async function activateAccess(
     ) {
         console.error(
             "Erro ao validar primeiro acesso:",
-            error
+            {
+                message:
+                    error?.message ??
+                    null,
+
+                status:
+                    error?.status ??
+                    null,
+
+                code:
+                    error?.code ??
+                    null,
+
+                rawType:
+                    activationType,
+
+                otpType,
+            }
         );
 
         return {
@@ -88,17 +184,21 @@ export async function activateAccess(
     const userId =
         data.user.id;
 
-    // =========================================================
+    // ==========================================================
     // PROFILE
-    // =========================================================
+    // ==========================================================
 
     const {
-        data: profile,
+        data:
+        profile,
+
         error:
         profileError,
     } =
         await supabase
-            .from("profiles")
+            .from(
+                "profiles"
+            )
             .select(
                 `
         id,
@@ -116,6 +216,11 @@ export async function activateAccess(
         profileError ||
         !profile
     ) {
+        console.error(
+            "Perfil não encontrado após ativação:",
+            profileError
+        );
+
         await supabase.auth.signOut();
 
         return {
@@ -123,6 +228,10 @@ export async function activateAccess(
                 "Seu usuário não possui um perfil válido no sistema.",
         };
     }
+
+    // ==========================================================
+    // USUÁRIO DESATIVADO
+    // ==========================================================
 
     if (
         !profile.is_active
@@ -135,12 +244,13 @@ export async function activateAccess(
         };
     }
 
-    // =========================================================
+    // ==========================================================
     // AUDITORIA
-    // =========================================================
+    // ==========================================================
 
     const {
-        error: auditError,
+        error:
+        auditError,
     } =
         await supabase.rpc(
             "register_user_access_event",
@@ -153,21 +263,26 @@ export async function activateAccess(
 
                 p_metadata: {
                     link_type:
-                        rawType,
+                        activationType,
+
+                    otp_type:
+                        otpType,
                 },
             }
         );
 
-    if (auditError) {
+    if (
+        auditError
+    ) {
         console.error(
             "Erro ao registrar validação:",
             auditError
         );
     }
 
-    // =========================================================
-    // JÁ FINALIZOU?
-    // =========================================================
+    // ==========================================================
+    // USUÁRIO JÁ CONFIGURADO
+    // ==========================================================
 
     if (
         !profile
@@ -178,9 +293,9 @@ export async function activateAccess(
         );
     }
 
-    // =========================================================
-    // DEFINIR SENHA
-    // =========================================================
+    // ==========================================================
+    // PRIMEIRO ACESSO
+    // ==========================================================
 
     redirect(
         "/primeiro-acesso"
